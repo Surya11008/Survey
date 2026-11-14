@@ -1,0 +1,1801 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Zion Survey & Attendance Manager</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Font: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-fade-in {
+      animation: fadeIn 0.2s ease-out forwards;
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-slate-50 text-slate-900 flex flex-col">
+
+  <!-- Top Application Header -->
+  <header class="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200/90">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
+      <button onclick="navigateHome()" class="flex items-center gap-2.5 text-left group cursor-pointer">
+        <div class="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs group-hover:bg-indigo-700 transition-colors">
+          <i data-lucide="users" class="w-5 h-5"></i>
+        </div>
+        <div class="min-w-0">
+          <h1 class="text-base sm:text-lg font-extrabold tracking-tight text-slate-900 truncate">
+            Zion Survey &amp; Attendance
+          </h1>
+          <p class="text-[11px] text-slate-500 hidden sm:block">
+            Multi-Zion Demographic Participation &amp; Analytics
+          </p>
+        </div>
+      </button>
+
+      <div class="flex items-center gap-2">
+        <button id="btn-back-home" onclick="navigateHome()" class="hidden inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200/80 text-slate-700 text-xs font-semibold transition-colors">
+          <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+          <span>All Surveys</span>
+        </button>
+
+        <button onclick="openManageFieldsModal()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-slate-200 hover:border-indigo-300 hover:text-indigo-600 text-slate-700 text-xs font-semibold shadow-2xs transition-colors">
+          <i data-lucide="settings" class="w-3.5 h-3.5"></i>
+          <span class="hidden sm:inline">Manage Zions &amp; Groups</span>
+          <span class="sm:hidden">Fields</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Container -->
+  <main id="app-main" class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8"></main>
+
+  <!-- Modal Container -->
+  <div id="modal-root"></div>
+
+  <!-- Floating Toast Container -->
+  <div id="toast-root" class="fixed bottom-5 right-5 z-50 pointer-events-none"></div>
+
+  <script>
+    // ============================================================================
+    // DEFAULT DATA & CONSTANTS
+    // ============================================================================
+    const STORAGE_KEY = 'zion_survey_attendance_html_v1';
+
+    const FOLDER_COLORS = [
+      { id: 'indigo', tab: 'bg-indigo-600', bg: 'bg-indigo-50', border: 'border-indigo-200', icon: 'text-indigo-600', badge: 'bg-indigo-100 text-indigo-700' },
+      { id: 'emerald', tab: 'bg-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-200', icon: 'text-emerald-600', badge: 'bg-emerald-100 text-emerald-700' },
+      { id: 'amber', tab: 'bg-amber-500', bg: 'bg-amber-50', border: 'border-amber-200', icon: 'text-amber-600', badge: 'bg-amber-100 text-amber-800' },
+      { id: 'rose', tab: 'bg-rose-600', bg: 'bg-rose-50', border: 'border-rose-200', icon: 'text-rose-600', badge: 'bg-rose-100 text-rose-700' },
+      { id: 'sky', tab: 'bg-sky-600', bg: 'bg-sky-50', border: 'border-sky-200', icon: 'text-sky-600', badge: 'bg-sky-100 text-sky-700' },
+      { id: 'violet', tab: 'bg-violet-600', bg: 'bg-violet-50', border: 'border-violet-200', icon: 'text-violet-600', badge: 'bg-violet-100 text-violet-700' },
+    ];
+
+    const getTodayISO = () => new Date().toISOString().split('T')[0];
+
+    const INITIAL_CATEGORIES = [
+      { id: 'cat-gathering', name: 'Gathering', description: 'Regular congregation & regional gathering attendance', color: 'indigo' },
+      { id: 'cat-education', name: 'Education', description: 'Study sessions, workshops & youth classes', color: 'emerald' },
+      { id: 'cat-online', name: 'Online Meeting', description: 'Virtual sessions & remote Zion participation', color: 'sky' },
+    ];
+
+    const INITIAL_ZIONS = [
+      { id: 'zion-rjy', name: 'Rajahmundry' },
+      { id: 'zion-nlr', name: 'Nellore' },
+      { id: 'zion-bvm', name: 'Bhimavaram' },
+      { id: 'zion-jrg', name: 'Jangareddygudem' },
+      { id: 'zion-elr', name: 'Eluru' },
+      { id: 'zion-dwl', name: 'Dowleshwaram' },
+      { id: 'zion-gkv', name: 'Gokavaram' },
+    ];
+
+    const INITIAL_AGE_GROUPS = [
+      { id: 'ag-male-adult', label: 'Male Adult', gender: 'male' },
+      { id: 'ag-female-adult', label: 'Female Adult', gender: 'female' },
+      { id: 'ag-male-youth', label: 'Male Youth', gender: 'male' },
+      { id: 'ag-female-youth', label: 'Female Youth', gender: 'female' },
+      { id: 'ag-male-students', label: 'Male Students', gender: 'male' },
+      { id: 'ag-female-students', label: 'Female Students', gender: 'female' },
+    ];
+
+    const INITIAL_ENTRIES = [
+      {
+        id: 'ent-1',
+        categoryId: 'cat-gathering',
+        zionId: 'zion-rjy',
+        date: getTodayISO(),
+        notes: 'Morning Gathering',
+        counts: { 'ag-male-adult': 24, 'ag-female-adult': 28, 'ag-male-youth': 14, 'ag-female-youth': 16, 'ag-male-students': 11, 'ag-female-students': 13 }
+      },
+      {
+        id: 'ent-2',
+        categoryId: 'cat-gathering',
+        zionId: 'zion-nlr',
+        date: getTodayISO(),
+        notes: 'Regional Assembly',
+        counts: { 'ag-male-adult': 19, 'ag-female-adult': 22, 'ag-male-youth': 10, 'ag-female-youth': 12, 'ag-male-students': 9, 'ag-female-students': 11 }
+      },
+      {
+        id: 'ent-3',
+        categoryId: 'cat-education',
+        zionId: 'zion-elr',
+        date: getTodayISO(),
+        notes: 'Weekend Study Session',
+        counts: { 'ag-male-adult': 8, 'ag-female-adult': 10, 'ag-male-youth': 15, 'ag-female-youth': 17, 'ag-male-students': 18, 'ag-female-students': 20 }
+      },
+      {
+        id: 'ent-4',
+        categoryId: 'cat-online',
+        zionId: 'zion-bvm',
+        date: getTodayISO(),
+        notes: 'Evening Zoom Session',
+        counts: { 'ag-male-adult': 12, 'ag-female-adult': 15, 'ag-male-youth': 9, 'ag-female-youth': 11, 'ag-male-students': 7, 'ag-female-students': 8 }
+      }
+    ];
+
+    // ============================================================================
+    // APPLICATION STATE
+    // ============================================================================
+    let state = {
+      categories: INITIAL_CATEGORIES,
+      zions: INITIAL_ZIONS,
+      ageGroups: INITIAL_AGE_GROUPS,
+      entries: INITIAL_ENTRIES,
+      route: 'home', // 'home' | 'category' | 'public'
+      selectedCategoryId: null,
+      activeTab: 'records', // 'records' | 'zionSummary'
+      filters: {
+        zion: 'all',
+        dateFrom: '',
+        dateTo: '',
+        search: '',
+        customRules: [] // { id, field, operator, value, enabled }
+      },
+      publicSubmitted: false
+    };
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed.categories) && parsed.categories.length) state.categories = parsed.categories;
+          if (Array.isArray(parsed.zions) && parsed.zions.length) state.zions = parsed.zions;
+          if (Array.isArray(parsed.ageGroups) && parsed.ageGroups.length) state.ageGroups = parsed.ageGroups;
+          if (Array.isArray(parsed.entries)) state.entries = parsed.entries;
+        }
+      } catch (e) {
+        console.warn('Unable to load saved state', e);
+      }
+    }
+
+    function saveState() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          categories: state.categories,
+          zions: state.zions,
+          ageGroups: state.ageGroups,
+          entries: state.entries
+        }));
+      } catch (e) {
+        console.warn('Unable to persist state', e);
+      }
+    }
+
+    // ============================================================================
+    // UTILITIES & HELPERS
+    // ============================================================================
+    function escapeHtml(str) {
+      return String(str ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function inferGenderFromLabel(label = '') {
+      const lower = label.toLowerCase();
+      if (lower.includes('female') || lower.includes('women') || lower.includes('girl') || lower.includes('sister')) return 'female';
+      if (lower.includes('male') || lower.includes('men') || lower.includes('boy') || lower.includes('brother')) return 'male';
+      return 'other';
+    }
+
+    function getEntryGenderStats(entry) {
+      let maleTotal = 0;
+      let femaleTotal = 0;
+      let grandTotal = 0;
+      const counts = entry?.counts || {};
+
+      state.ageGroups.forEach(ag => {
+        const val = Number(counts[ag.id]) || 0;
+        grandTotal += val;
+        const gender = ag.gender || inferGenderFromLabel(ag.label);
+        if (gender === 'male') maleTotal += val;
+        else if (gender === 'female') femaleTotal += val;
+      });
+
+      return { maleTotal, femaleTotal, grandTotal };
+    }
+
+    function buildShareUrl(categoryId) {
+      const base = window.location.href.split('#')[0];
+      return `${base}#/survey/${encodeURIComponent(categoryId)}`;
+    }
+
+    function copyTextToClipboard(text, successMsg) {
+      try {
+        const tempInput = document.createElement('textarea');
+        tempInput.value = text;
+        tempInput.style.position = 'fixed';
+        tempInput.style.opacity = '0';
+        document.body.appendChild(tempInput);
+        tempInput.select();
+        document.execCommand('copy');
+        document.body.removeChild(tempInput);
+        showToast(successMsg || 'Copied to clipboard!');
+      } catch (e) {
+        showToast(`Link: ${text}`);
+      }
+    }
+
+    function showToast(message) {
+      const root = document.getElementById('toast-root');
+      root.innerHTML = `
+        <div class="flex items-center gap-2.5 px-4 py-3 rounded-xl bg-slate-900 text-white text-xs sm:text-sm font-semibold shadow-xl border border-slate-700 animate-fade-in">
+          <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-400 shrink-0"></i>
+          <span>${escapeHtml(message)}</span>
+        </div>
+      `;
+      lucide.createIcons();
+      clearTimeout(window.__toastTimer);
+      window.__toastTimer = setTimeout(() => { root.innerHTML = ''; }, 3000);
+    }
+
+    // ============================================================================
+    // NAVIGATION & HASH ROUTING
+    // ============================================================================
+    function syncFromHash() {
+      const hash = window.location.hash || '';
+      if (hash.startsWith('#/survey/')) {
+        const catId = decodeURIComponent(hash.replace('#/survey/', '').trim());
+        const exists = state.categories.find(c => c.id === catId);
+        if (exists) {
+          state.selectedCategoryId = catId;
+          state.route = 'public';
+          state.publicSubmitted = false;
+          render();
+          return;
+        }
+      }
+    }
+
+    function navigateHome() {
+      window.location.hash = '';
+      state.route = 'home';
+      state.selectedCategoryId = null;
+      render();
+    }
+
+    function openCategory(catId) {
+      window.location.hash = '';
+      state.selectedCategoryId = catId;
+      state.route = 'category';
+      state.activeTab = 'records';
+      state.filters = { zion: 'all', dateFrom: '', dateTo: '', search: '', customRules: [] };
+      render();
+    }
+
+    function openPublicSurvey(catId) {
+      state.selectedCategoryId = catId;
+      state.route = 'public';
+      state.publicSubmitted = false;
+      window.location.hash = `#/survey/${encodeURIComponent(catId)}`;
+      render();
+    }
+
+    function copyCategoryLink(catId) {
+      const cat = state.categories.find(c => c.id === catId);
+      if (!cat) return;
+      copyTextToClipboard(buildShareUrl(catId), `Survey link copied for "${cat.name}"!`);
+    }
+
+    // ============================================================================
+    // RENDER DISPATCHER
+    // ============================================================================
+    function render() {
+      const backBtn = document.getElementById('btn-back-home');
+      if (state.route === 'home') {
+        backBtn.classList.add('hidden');
+      } else {
+        backBtn.classList.remove('hidden');
+      }
+
+      const main = document.getElementById('app-main');
+      const activeCat = state.categories.find(c => c.id === state.selectedCategoryId);
+
+      if (state.route === 'public' && activeCat) {
+        main.innerHTML = renderPublicSurveyView(activeCat);
+      } else if (state.route === 'category' && activeCat) {
+        main.innerHTML = renderCategoryDashboardView(activeCat);
+      } else {
+        main.innerHTML = renderHomeFolderView();
+      }
+
+      lucide.createIcons();
+    }
+
+    // ============================================================================
+    // 1. HOME FOLDER VIEW (NO GLOBAL TOTAL BOXES, "+ ADD SURVEY")
+    // ============================================================================
+    function renderHomeFolderView() {
+      const cardsHtml = state.categories.length === 0
+        ? `
+          <div class="text-center py-16 bg-white rounded-2xl border border-dashed border-slate-300">
+            <i data-lucide="folder" class="w-12 h-12 text-slate-300 mx-auto mb-3"></i>
+            <h3 class="text-lg font-semibold text-slate-800">No Surveys Yet</h3>
+            <p class="text-sm text-slate-500 mt-1 mb-5">
+              Create your first survey (e.g., Gathering, Education, Online Meeting) to start recording attendance.
+            </p>
+            <button onclick="openCategoryModal('add')" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700">
+              <i data-lucide="folder-plus" class="w-4 h-4"></i>
+              <span>Add Survey</span>
+            </button>
+          </div>
+        `
+        : `
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            ${state.categories.map(cat => {
+              const catEntries = state.entries.filter(e => e.categoryId === cat.id);
+              let catParticipants = 0, catMale = 0, catFemale = 0;
+              catEntries.forEach(e => {
+                const s = getEntryGenderStats(e);
+                catParticipants += s.grandTotal;
+                catMale += s.maleTotal;
+                catFemale += s.femaleTotal;
+              });
+              const theme = FOLDER_COLORS.find(c => c.id === cat.color) || FOLDER_COLORS[0];
+
+              return `
+                <div onclick="openCategory('${cat.id}')" class="group relative flex flex-col justify-between cursor-pointer transition-all duration-200 hover:-translate-y-1">
+                  <!-- Folder Top Tab -->
+                  <div class="flex items-end">
+                    <div class="h-3.5 w-28 rounded-t-xl ${theme.tab} opacity-90 group-hover:opacity-100 transition-opacity ml-1"></div>
+                  </div>
+
+                  <!-- Folder Main Card -->
+                  <div class="bg-white rounded-2xl rounded-tl-none border border-slate-200/90 group-hover:border-indigo-300 shadow-xs group-hover:shadow-md p-5 sm:p-6 transition-all">
+                    <div class="flex items-start justify-between gap-3">
+                      <div class="w-12 h-12 rounded-xl ${theme.bg} ${theme.border} border flex items-center justify-center transition-transform group-hover:scale-105">
+                        <i data-lucide="folder" class="w-6 h-6 ${theme.icon}"></i>
+                      </div>
+
+                      <div class="flex items-center gap-1" onclick="event.stopPropagation()">
+                        <button onclick="openCategoryModal('edit', '${cat.id}')" title="Edit Survey" class="p-2 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors">
+                          <i data-lucide="edit-2" class="w-4 h-4"></i>
+                        </button>
+                        <button onclick="confirmDeleteCategory('${cat.id}')" title="Delete Survey" class="p-2 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors">
+                          <i data-lucide="trash-2" class="w-4 h-4"></i>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div class="mt-4">
+                      <h3 class="text-lg font-bold text-slate-900 group-hover:text-indigo-600 transition-colors flex items-center justify-between">
+                        <span>${escapeHtml(cat.name)}</span>
+                        <i data-lucide="chevron-right" class="w-4 h-4 text-slate-400 group-hover:text-indigo-600 group-hover:translate-x-0.5 transition-all"></i>
+                      </h3>
+                      <p class="text-xs text-slate-500 mt-1 line-clamp-1">
+                        ${escapeHtml(cat.description || 'Tap to view & add survey records')}
+                      </p>
+                    </div>
+
+                    <div class="mt-3.5 flex items-center gap-2 text-[11px] font-semibold">
+                      <span class="px-2 py-0.5 rounded-md bg-sky-50 text-sky-700 border border-sky-100">
+                        Male: ${catMale.toLocaleString()}
+                      </span>
+                      <span class="px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-100">
+                        Female: ${catFemale.toLocaleString()}
+                      </span>
+                    </div>
+
+                    <!-- Public Survey Link Strip -->
+                    <div onclick="event.stopPropagation()" class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                      <button onclick="copyCategoryLink('${cat.id}')" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 text-xs font-semibold transition-colors">
+                        <i data-lucide="share-2" class="w-3.5 h-3.5 text-indigo-600"></i>
+                        <span>Copy Survey Link</span>
+                      </button>
+
+                      <button onclick="openPublicSurvey('${cat.id}')" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-indigo-600 hover:bg-indigo-50 transition-colors">
+                        <span>Open Form</span>
+                        <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+                      </button>
+                    </div>
+
+                    <!-- Folder Stats Footer -->
+                    <div class="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">
+                      <div>
+                        <span class="text-[11px] font-medium text-slate-400 uppercase tracking-wider block">Surveys</span>
+                        <span class="text-sm font-bold text-slate-800">
+                          ${catEntries.length} ${catEntries.length === 1 ? 'Entry' : 'Entries'}
+                        </span>
+                      </div>
+                      <div class="text-right">
+                        <span class="text-[11px] font-medium text-slate-400 uppercase tracking-wider block">Total Participants</span>
+                        <span class="inline-block px-2.5 py-0.5 rounded-full text-sm font-bold ${theme.badge}">
+                          ${catParticipants.toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        `;
+
+      return `
+        <div class="space-y-8">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/90 shadow-xs">
+            <div>
+              <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-indigo-600 mb-1">
+                <i data-lucide="folder" class="w-3.5 h-3.5"></i>
+                <span>Survey Categories</span>
+              </div>
+              <h2 class="text-xl sm:text-2xl font-bold text-slate-900">Select a Survey</h2>
+              <p class="text-sm text-slate-500 mt-1">
+                Open any survey folder to manage records, totals &amp; filters, or share its direct survey link so participants can submit responses.
+              </p>
+            </div>
+            <div class="flex items-center shrink-0">
+              <button onclick="openCategoryModal('add')" class="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white font-semibold text-sm shadow-sm transition-all cursor-pointer">
+                <i data-lucide="folder-plus" class="w-4 h-4"></i>
+                <span>+ Add Survey</span>
+              </button>
+            </div>
+          </div>
+
+          ${cardsHtml}
+        </div>
+      `;
+    }
+
+    // ============================================================================
+    // 2. DEDICATED CATEGORY DASHBOARD VIEW
+    // ============================================================================
+    function matchesCustomRule(entry, rule) {
+      if (!rule.enabled) return true;
+      const stats = getEntryGenderStats(entry);
+      const zionName = state.zions.find(z => z.id === entry.zionId)?.name || '';
+
+      if (rule.field === 'zion') {
+        const target = String(rule.value || '').toLowerCase();
+        if (rule.operator === 'equals') return entry.zionId === rule.value || zionName.toLowerCase() === target;
+        if (rule.operator === 'not_equals') return entry.zionId !== rule.value && zionName.toLowerCase() !== target;
+        return zionName.toLowerCase().includes(target);
+      }
+
+      if (rule.field === 'notes') {
+        const hay = `${entry.notes || ''} ${zionName}`.toLowerCase();
+        const needle = String(rule.value || '').toLowerCase();
+        if (rule.operator === 'not_contains') return !hay.includes(needle);
+        return hay.includes(needle);
+      }
+
+      let metricVal = 0;
+      if (rule.field === 'maleTotal') metricVal = stats.maleTotal;
+      else if (rule.field === 'femaleTotal') metricVal = stats.femaleTotal;
+      else if (rule.field === 'grandTotal') metricVal = stats.grandTotal;
+      else metricVal = Number(entry.counts?.[rule.field]) || 0;
+
+      const threshold = Number(rule.value) || 0;
+      switch (rule.operator) {
+        case '>=': return metricVal >= threshold;
+        case '<=': return metricVal <= threshold;
+        case '>': return metricVal > threshold;
+        case '<': return metricVal < threshold;
+        case '==': return metricVal === threshold;
+        default: return true;
+      }
+    }
+
+    function getFilteredCategoryEntries(catId) {
+      const f = state.filters;
+      return state.entries.filter(entry => {
+        if (entry.categoryId !== catId) return false;
+        if (f.zion !== 'all' && entry.zionId !== f.zion) return false;
+        if (f.dateFrom && entry.date < f.dateFrom) return false;
+        if (f.dateTo && entry.date > f.dateTo) return false;
+        if (f.search.trim()) {
+          const q = f.search.toLowerCase();
+          const zionName = (state.zions.find(z => z.id === entry.zionId)?.name || '').toLowerCase();
+          const notes = (entry.notes || '').toLowerCase();
+          if (!zionName.includes(q) && !notes.includes(q) && !entry.date.includes(q)) return false;
+        }
+        for (const rule of f.customRules) {
+          if (!matchesCustomRule(entry, rule)) return false;
+        }
+        return true;
+      });
+    }
+
+    function getRuleFieldLabel(field) {
+      if (field === 'maleTotal') return 'Male Total';
+      if (field === 'femaleTotal') return 'Female Total';
+      if (field === 'grandTotal') return 'Grand Total';
+      if (field === 'zion') return 'Zion';
+      if (field === 'notes') return 'Search / Remarks';
+      return state.ageGroups.find(ag => ag.id === field)?.label || field;
+    }
+
+    function formatRuleDisplayValue(rule) {
+      if (rule.field === 'zion') {
+        return state.zions.find(z => z.id === rule.value)?.name || rule.value;
+      }
+      return rule.value;
+    }
+
+    function renderCategoryDashboardView(category) {
+      const theme = FOLDER_COLORS.find(c => c.id === category.color) || FOLDER_COLORS[0];
+      const filteredEntries = getFilteredCategoryEntries(category.id);
+      const shareUrl = buildShareUrl(category.id);
+
+      // Compute Totals
+      let grandTotal = 0, maleTotal = 0, femaleTotal = 0;
+      const byAgeGroup = {};
+      state.ageGroups.forEach(ag => byAgeGroup[ag.id] = 0);
+
+      filteredEntries.forEach(entry => {
+        const s = getEntryGenderStats(entry);
+        grandTotal += s.grandTotal;
+        maleTotal += s.maleTotal;
+        femaleTotal += s.femaleTotal;
+        state.ageGroups.forEach(ag => {
+          byAgeGroup[ag.id] += Number(entry.counts?.[ag.id]) || 0;
+        });
+      });
+
+      // Zion-wise Breakdown
+      const zionMap = new Map();
+      filteredEntries.forEach(entry => {
+        const zName = state.zions.find(z => z.id === entry.zionId)?.name || 'Unknown Zion';
+        if (!zionMap.has(entry.zionId)) {
+          const initCounts = {};
+          state.ageGroups.forEach(ag => initCounts[ag.id] = 0);
+          zionMap.set(entry.zionId, { zionId: entry.zionId, zionName: zName, entryCount: 0, maleTotal: 0, femaleTotal: 0, grandTotal: 0, counts: initCounts });
+        }
+        const row = zionMap.get(entry.zionId);
+        const s = getEntryGenderStats(entry);
+        row.entryCount += 1;
+        row.maleTotal += s.maleTotal;
+        row.femaleTotal += s.femaleTotal;
+        row.grandTotal += s.grandTotal;
+        state.ageGroups.forEach(ag => row.counts[ag.id] += Number(entry.counts?.[ag.id]) || 0);
+      });
+      const zionBreakdown = Array.from(zionMap.values()).sort((a, b) => b.grandTotal - a.grandTotal);
+
+      const hasActiveFilters = state.filters.zion !== 'all' || state.filters.dateFrom || state.filters.dateTo || state.filters.search.trim() || state.filters.customRules.some(r => r.enabled);
+
+      return `
+        <div class="space-y-6">
+          <!-- Category Header & Share Link -->
+          <div class="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/90 shadow-xs space-y-4">
+            <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div class="flex items-start gap-3.5">
+                <button onclick="navigateHome()" class="mt-0.5 p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors" title="Back to All Surveys">
+                  <i data-lucide="arrow-left" class="w-4 h-4"></i>
+                </button>
+                <div>
+                  <div class="flex items-center gap-2">
+                    <span class="px-2.5 py-0.5 rounded-full text-xs font-bold ${theme.badge}">Survey Workspace</span>
+                    <button onclick="openCategoryModal('edit', '${category.id}')" class="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-indigo-600">
+                      <i data-lucide="edit-2" class="w-3 h-3"></i>
+                      <span>Edit Survey</span>
+                    </button>
+                  </div>
+                  <h2 class="text-xl sm:text-2xl font-extrabold text-slate-900 mt-1">${escapeHtml(category.name)}</h2>
+                  ${category.description ? `<p class="text-xs sm:text-sm text-slate-500 mt-0.5">${escapeHtml(category.description)}</p>` : ''}
+                </div>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-2.5">
+                <button onclick="openPublicSurvey('${category.id}')" class="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs sm:text-sm font-semibold transition-colors">
+                  <i data-lucide="external-link" class="w-4 h-4"></i>
+                  <span>Public Survey Form</span>
+                </button>
+
+                <button onclick="exportCategoryCSV('${category.id}')" class="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs sm:text-sm font-semibold transition-colors">
+                  <i data-lucide="download" class="w-4 h-4"></i>
+                  <span>Export CSV</span>
+                </button>
+
+                <button onclick="openEntryModal('add')" class="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-semibold shadow-sm transition-all cursor-pointer">
+                  <i data-lucide="plus" class="w-4 h-4"></i>
+                  <span>Add Entry</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Shareable Participant Link Strip -->
+            <div class="p-3 rounded-xl bg-indigo-50/70 border border-indigo-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              <div class="flex items-center gap-2 min-w-0">
+                <i data-lucide="share-2" class="w-4 h-4 text-indigo-600 shrink-0"></i>
+                <span class="text-xs font-bold text-indigo-900 shrink-0">Participant Link:</span>
+                <code class="text-xs text-indigo-700 bg-white px-2.5 py-1 rounded-lg border border-indigo-200/80 truncate block">${escapeHtml(shareUrl)}</code>
+              </div>
+              <button onclick="copyCategoryLink('${category.id}')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition-colors shrink-0">
+                <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                <span>Copy Link</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Live Totals Cards -->
+          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+            <div class="col-span-2 sm:col-span-1 bg-indigo-600 text-white p-4 rounded-2xl shadow-xs flex flex-col justify-between">
+              <span class="text-[11px] font-bold uppercase tracking-wider text-indigo-200">Grand Total</span>
+              <div class="mt-2 flex items-baseline justify-between">
+                <span class="text-2xl sm:text-3xl font-extrabold tabular-nums">${grandTotal.toLocaleString()}</span>
+                <span class="text-xs text-indigo-200">${filteredEntries.length} ${filteredEntries.length === 1 ? 'entry' : 'entries'}</span>
+              </div>
+            </div>
+
+            <div class="bg-white p-4 rounded-2xl border border-sky-200/90 shadow-2xs flex flex-col justify-between">
+              <span class="text-[11px] font-bold uppercase tracking-wider text-sky-600">Male Total</span>
+              <div class="mt-2 flex items-baseline justify-between">
+                <span class="text-2xl font-extrabold text-sky-900 tabular-nums">${maleTotal.toLocaleString()}</span>
+                <span class="text-xs font-semibold text-sky-600">${grandTotal > 0 ? Math.round((maleTotal / grandTotal) * 100) : 0}%</span>
+              </div>
+            </div>
+
+            <div class="bg-white p-4 rounded-2xl border border-rose-200/90 shadow-2xs flex flex-col justify-between">
+              <span class="text-[11px] font-bold uppercase tracking-wider text-rose-600">Female Total</span>
+              <div class="mt-2 flex items-baseline justify-between">
+                <span class="text-2xl font-extrabold text-rose-900 tabular-nums">${femaleTotal.toLocaleString()}</span>
+                <span class="text-xs font-semibold text-rose-600">${grandTotal > 0 ? Math.round((femaleTotal / grandTotal) * 100) : 0}%</span>
+              </div>
+            </div>
+
+            ${state.ageGroups.map(ag => {
+              const val = byAgeGroup[ag.id] || 0;
+              const pct = grandTotal > 0 ? Math.round((val / grandTotal) * 100) : 0;
+              return `
+                <div class="bg-white p-3.5 rounded-2xl border border-slate-200/90 shadow-2xs flex flex-col justify-between">
+                  <span class="text-xs font-semibold text-slate-600 truncate" title="${escapeHtml(ag.label)}">${escapeHtml(ag.label)}</span>
+                  <div class="mt-2 flex items-baseline justify-between">
+                    <span class="text-xl font-extrabold text-slate-900 tabular-nums">${val.toLocaleString()}</span>
+                    <span class="text-[11px] font-semibold text-slate-400">${pct}%</span>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+
+          <!-- Filters & Customizable Search/Filter Builder -->
+          <div class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="flex items-center gap-2">
+                <i data-lucide="sliders-horizontal" class="w-4 h-4 text-indigo-600"></i>
+                <h3 class="text-sm font-bold text-slate-900">Filters &amp; Search (${escapeHtml(category.name)})</h3>
+              </div>
+
+              <div class="flex items-center gap-2">
+                <button onclick="openFilterRuleModal('add')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold transition-colors">
+                  <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                  <span>Add Filter / Search Rule</span>
+                </button>
+                ${hasActiveFilters ? `
+                  <button onclick="resetFilters()" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold transition-colors">
+                    <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+                    <span>Reset</span>
+                  </button>
+                ` : ''}
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div>
+                <label class="block text-[11px] font-semibold text-slate-500 mb-1">Zion Location</label>
+                <select onchange="updateFilter('zion', this.value)" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium text-slate-800">
+                  <option value="all" ${state.filters.zion === 'all' ? 'selected' : ''}>All Zions (${state.zions.length})</option>
+                  ${state.zions.map(z => `<option value="${z.id}" ${state.filters.zion === z.id ? 'selected' : ''}>${escapeHtml(z.name)}</option>`).join('')}
+                </select>
+              </div>
+
+              <div>
+                <label class="block text-[11px] font-semibold text-slate-500 mb-1">From Date</label>
+                <input type="date" value="${state.filters.dateFrom}" onchange="updateFilter('dateFrom', this.value)" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800" />
+              </div>
+
+              <div>
+                <label class="block text-[11px] font-semibold text-slate-500 mb-1">To Date</label>
+                <input type="date" value="${state.filters.dateTo}" onchange="updateFilter('dateTo', this.value)" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800" />
+              </div>
+
+              <div>
+                <label class="block text-[11px] font-semibold text-slate-500 mb-1">Quick Search (Zion / Remarks)</label>
+                <div class="relative">
+                  <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+                  <input type="text" value="${escapeHtml(state.filters.search)}" oninput="updateFilter('search', this.value)" placeholder="Search records..." class="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800" />
+                </div>
+              </div>
+            </div>
+
+            ${state.filters.customRules.length > 0 ? `
+              <div class="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-2">
+                <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400 mr-1">Custom Rules:</span>
+                ${state.filters.customRules.map(rule => `
+                  <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-xs font-semibold transition-all ${rule.enabled ? 'bg-indigo-50 border-indigo-200 text-indigo-800' : 'bg-slate-100 border-slate-200 text-slate-400 line-through'}">
+                    <button onclick="toggleCustomRule('${rule.id}')" title="Toggle Rule" class="p-0.5 rounded hover:bg-white/70">
+                      <i data-lucide="power" class="w-3 h-3"></i>
+                    </button>
+                    <span>${escapeHtml(getRuleFieldLabel(rule.field))} ${escapeHtml(rule.operator)} <strong>${escapeHtml(formatRuleDisplayValue(rule))}</strong></span>
+                    <button onclick="openFilterRuleModal('edit', '${rule.id}')" title="Edit Rule" class="p-0.5 rounded hover:bg-white/70 text-indigo-600">
+                      <i data-lucide="edit-2" class="w-3 h-3"></i>
+                    </button>
+                    <button onclick="deleteCustomRule('${rule.id}')" title="Remove Rule" class="p-0.5 rounded hover:bg-white/70 text-rose-600">
+                      <i data-lucide="x" class="w-3 h-3"></i>
+                    </button>
+                  </div>
+                `).join('')}
+              </div>
+            ` : ''}
+          </div>
+
+          <!-- View Switcher Tabs -->
+          <div class="flex items-center justify-between gap-3">
+            <div class="inline-flex p-1 rounded-xl bg-slate-200/70">
+              <button onclick="switchTab('records')" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all ${state.activeTab === 'records' ? 'bg-white text-indigo-600 shadow-2xs' : 'text-slate-600 hover:text-slate-900'}">
+                <i data-lucide="file-text" class="w-4 h-4"></i>
+                <span>Survey Records (${filteredEntries.length})</span>
+              </button>
+              <button onclick="switchTab('zionSummary')" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all ${state.activeTab === 'zionSummary' ? 'bg-white text-indigo-600 shadow-2xs' : 'text-slate-600 hover:text-slate-900'}">
+                <i data-lucide="bar-chart-3" class="w-4 h-4"></i>
+                <span>Zion-wise Summary (${zionBreakdown.length})</span>
+              </button>
+            </div>
+
+            <button onclick="openManageFieldsModal()" class="text-xs font-semibold text-indigo-600 hover:text-indigo-800 hidden sm:inline-flex items-center gap-1">
+              <i data-lucide="settings" class="w-3.5 h-3.5"></i>
+              <span>Edit Zions / Age Groups</span>
+            </button>
+          </div>
+
+          <!-- Table Content -->
+          ${state.activeTab === 'records' ? renderRecordsTable(filteredEntries) : renderZionSummaryTable(zionBreakdown)}
+        </div>
+      `;
+    }
+
+    function renderRecordsTable(filteredEntries) {
+      if (filteredEntries.length === 0) {
+        return `
+          <div class="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-12 text-center">
+            <i data-lucide="users" class="w-10 h-10 text-slate-300 mx-auto mb-2"></i>
+            <p class="text-sm font-semibold text-slate-700">No matching survey entries</p>
+            <p class="text-xs text-slate-500 mt-1 mb-4">Add a new survey record or adjust your active filters.</p>
+            <button onclick="openEntryModal('add')" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700">
+              <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+              <span>Add Entry</span>
+            </button>
+          </div>
+        `;
+      }
+
+      return `
+        <div class="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  <th class="py-3.5 px-4">Date</th>
+                  <th class="py-3.5 px-4">Zion</th>
+                  <th class="py-3.5 px-4">Remarks</th>
+                  ${state.ageGroups.map(ag => `<th class="py-3.5 px-3 text-right whitespace-nowrap">${escapeHtml(ag.label)}</th>`).join('')}
+                  <th class="py-3.5 px-3 text-right text-sky-700 bg-sky-50/60 whitespace-nowrap">Male Total</th>
+                  <th class="py-3.5 px-3 text-right text-rose-700 bg-rose-50/60 whitespace-nowrap">Female Total</th>
+                  <th class="py-3.5 px-4 text-right text-indigo-700 bg-indigo-50/60 whitespace-nowrap">Total</th>
+                  <th class="py-3.5 px-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100 text-xs sm:text-sm">
+                ${filteredEntries.map(entry => {
+                  const zName = state.zions.find(z => z.id === entry.zionId)?.name || 'Unknown Zion';
+                  const stats = getEntryGenderStats(entry);
+                  return `
+                    <tr class="hover:bg-slate-50/80 transition-colors">
+                      <td class="py-3 px-4 font-medium text-slate-700 whitespace-nowrap">${escapeHtml(entry.date)}</td>
+                      <td class="py-3 px-4 font-bold text-slate-900 whitespace-nowrap">${escapeHtml(zName)}</td>
+                      <td class="py-3 px-4 text-slate-500 max-w-[180px] truncate">${escapeHtml(entry.notes || '—')}</td>
+                      ${state.ageGroups.map(ag => `<td class="py-3 px-3 text-right tabular-nums text-slate-700">${Number(entry.counts?.[ag.id]) || 0}</td>`).join('')}
+                      <td class="py-3 px-3 text-right font-bold text-sky-800 bg-sky-50/40 tabular-nums">${stats.maleTotal}</td>
+                      <td class="py-3 px-3 text-right font-bold text-rose-800 bg-rose-50/40 tabular-nums">${stats.femaleTotal}</td>
+                      <td class="py-3 px-4 text-right font-extrabold text-indigo-700 bg-indigo-50/40 tabular-nums">${stats.grandTotal}</td>
+                      <td class="py-3 px-4 text-right whitespace-nowrap">
+                        <div class="inline-flex items-center gap-1">
+                          <button onclick="openEntryModal('edit', '${entry.id}')" title="Edit Entry" class="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50">
+                            <i data-lucide="edit-2" class="w-3.5 h-3.5"></i>
+                          </button>
+                          <button onclick="confirmDeleteEntry('${entry.id}')" title="Delete Entry" class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50">
+                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderZionSummaryTable(zionBreakdown) {
+      if (zionBreakdown.length === 0) {
+        return `
+          <div class="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-12 text-center text-sm text-slate-500">
+            No Zion summary data available for the current filter selection.
+          </div>
+        `;
+      }
+
+      return `
+        <div class="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  <th class="py-3.5 px-4">Zion</th>
+                  <th class="py-3.5 px-3 text-right">Records</th>
+                  ${state.ageGroups.map(ag => `<th class="py-3.5 px-3 text-right whitespace-nowrap">${escapeHtml(ag.label)}</th>`).join('')}
+                  <th class="py-3.5 px-3 text-right text-sky-700 bg-sky-50/60">Male Total</th>
+                  <th class="py-3.5 px-3 text-right text-rose-700 bg-rose-50/60">Female Total</th>
+                  <th class="py-3.5 px-4 text-right text-indigo-700 bg-indigo-50/60">Grand Total</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100 text-xs sm:text-sm">
+                ${zionBreakdown.map(row => `
+                  <tr class="hover:bg-slate-50/80">
+                    <td class="py-3 px-4 font-bold text-slate-900">${escapeHtml(row.zionName)}</td>
+                    <td class="py-3 px-3 text-right text-slate-500 tabular-nums">${row.entryCount}</td>
+                    ${state.ageGroups.map(ag => `<td class="py-3 px-3 text-right text-slate-700 tabular-nums">${row.counts[ag.id]}</td>`).join('')}
+                    <td class="py-3 px-3 text-right font-bold text-sky-800 bg-sky-50/40 tabular-nums">${row.maleTotal}</td>
+                    <td class="py-3 px-3 text-right font-bold text-rose-800 bg-rose-50/40 tabular-nums">${row.femaleTotal}</td>
+                    <td class="py-3 px-4 text-right font-extrabold text-indigo-700 bg-indigo-50/40 tabular-nums">${row.grandTotal}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    // ============================================================================
+    // 3. PUBLIC SURVEY PARTICIPATION VIEW (#/survey/<id>)
+    // ============================================================================
+    function renderPublicSurveyView(category) {
+      const shareUrl = buildShareUrl(category.id);
+
+      if (state.publicSubmitted) {
+        return `
+          <div class="max-w-2xl mx-auto bg-white p-8 rounded-2xl border border-emerald-200 shadow-xs text-center space-y-4">
+            <div class="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
+              <i data-lucide="check-circle-2" class="w-8 h-8"></i>
+            </div>
+            <h3 class="text-xl font-bold text-slate-900">Thank You! Response Recorded</h3>
+            <p class="text-sm text-slate-500 max-w-md mx-auto">
+              Your attendance for <strong>${escapeHtml(category.name)}</strong> has been saved successfully.
+            </p>
+            <div class="flex flex-wrap items-center justify-center gap-3 pt-2">
+              <button onclick="state.publicSubmitted = false; render();" class="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold">
+                Submit Another Response
+              </button>
+              <button onclick="openCategory('${category.id}')" class="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-sm font-semibold">
+                Open ${escapeHtml(category.name)} Dashboard
+              </button>
+            </div>
+          </div>
+        `;
+      }
+
+      return `
+        <div class="max-w-2xl mx-auto space-y-6">
+          <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold">
+                <i data-lucide="user-check" class="w-3.5 h-3.5"></i>
+                <span>Public Survey Participation Form</span>
+              </span>
+              <div class="flex items-center gap-2">
+                <button onclick="copyCategoryLink('${category.id}')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 text-xs font-semibold">
+                  <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                  <span>Copy Link</span>
+                </button>
+                <button onclick="openCategory('${category.id}')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold">
+                  <span>View Results &amp; Totals</span>
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <h2 class="text-2xl font-extrabold text-slate-900">${escapeHtml(category.name)} Survey</h2>
+              <p class="text-sm text-slate-500 mt-1">
+                ${escapeHtml(category.description || 'Select your Zion and enter participant counts below to submit your attendance.')}
+              </p>
+            </div>
+
+            <div class="text-[11px] text-slate-400 break-all bg-slate-50 px-3 py-2 rounded-xl border border-slate-200/70">
+              Direct Link: <span class="text-indigo-600 font-medium">${escapeHtml(shareUrl)}</span>
+            </div>
+          </div>
+
+          <form onsubmit="handlePublicFormSubmit(event, '${category.id}')" class="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-5">
+            <div class="space-y-2">
+              <div class="flex items-center justify-between">
+                <label class="text-xs font-bold uppercase tracking-wider text-slate-700">Select Zion *</label>
+                <button type="button" onclick="document.getElementById('pub-add-zion-box').classList.toggle('hidden')" class="text-xs font-semibold text-indigo-600 hover:text-indigo-800 inline-flex items-center gap-1">
+                  <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                  <span>Add Zion</span>
+                </button>
+              </div>
+
+              <select id="pub-zion-select" required class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-900">
+                ${state.zions.map(z => `<option value="${z.id}">${escapeHtml(z.name)}</option>`).join('')}
+              </select>
+
+              <div id="pub-add-zion-box" class="hidden flex items-center gap-2 pt-1">
+                <input id="pub-new-zion-input" type="text" placeholder="New Zion name..." class="flex-1 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm" />
+                <button type="button" onclick="handlePublicQuickAddZion()" class="px-3.5 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold">Add</button>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1">Date</label>
+                <input id="pub-date" type="date" value="${getTodayISO()}" required class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800" />
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1">Your Name / Remarks (Optional)</label>
+                <input id="pub-notes" type="text" placeholder="e.g., Coordinator name or session" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800" />
+              </div>
+            </div>
+
+            <div class="space-y-2.5">
+              <label class="block text-xs font-bold uppercase tracking-wider text-slate-700">Participant Counts</label>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                ${state.ageGroups.map(ag => `
+                  <div class="p-3 rounded-xl bg-slate-50 border border-slate-200/80">
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">${escapeHtml(ag.label)}</label>
+                    <input type="number" min="0" inputmode="numeric" placeholder="0" data-ag-id="${ag.id}" oninput="updatePublicLiveTotals()" class="pub-ag-input w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-base font-bold text-slate-900 tabular-nums" />
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+
+            <div class="pt-4 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div class="flex flex-wrap items-center gap-2 text-xs">
+                <span class="px-2.5 py-1.5 rounded-lg bg-sky-50 text-sky-800 font-bold">Male: <span id="pub-live-male">0</span></span>
+                <span class="px-2.5 py-1.5 rounded-lg bg-rose-50 text-rose-800 font-bold">Female: <span id="pub-live-female">0</span></span>
+                <span class="px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-800 font-extrabold">Total: <span id="pub-live-total">0</span></span>
+              </div>
+
+              <div class="flex items-center justify-end gap-2">
+                <button type="button" onclick="navigateHome()" class="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100">Cancel</button>
+                <button type="submit" class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold shadow-sm">Submit Survey</button>
+              </div>
+            </div>
+          </form>
+        </div>
+      `;
+    }
+
+    function handlePublicQuickAddZion() {
+      const input = document.getElementById('pub-new-zion-input');
+      const trimmed = (input?.value || '').trim();
+      if (!trimmed) return;
+      const newZ = { id: `zion-${Date.now()}`, name: trimmed };
+      state.zions.push(newZ);
+      saveState();
+      const select = document.getElementById('pub-zion-select');
+      const opt = document.createElement('option');
+      opt.value = newZ.id;
+      opt.textContent = newZ.name;
+      opt.selected = true;
+      select.appendChild(opt);
+      input.value = '';
+      document.getElementById('pub-add-zion-box').classList.add('hidden');
+      showToast(`Zion "${trimmed}" added`);
+    }
+
+    function updatePublicLiveTotals() {
+      const counts = {};
+      document.querySelectorAll('.pub-ag-input').forEach(inp => {
+        counts[inp.dataset.agId] = inp.value;
+      });
+      const stats = getEntryGenderStats({ counts });
+      document.getElementById('pub-live-male').textContent = stats.maleTotal;
+      document.getElementById('pub-live-female').textContent = stats.femaleTotal;
+      document.getElementById('pub-live-total').textContent = stats.grandTotal;
+    }
+
+    function handlePublicFormSubmit(e, categoryId) {
+      e.preventDefault();
+      const zionId = document.getElementById('pub-zion-select').value;
+      const date = document.getElementById('pub-date').value;
+      const notes = document.getElementById('pub-notes').value.trim();
+      const counts = {};
+      document.querySelectorAll('.pub-ag-input').forEach(inp => {
+        counts[inp.dataset.agId] = Math.max(0, parseInt(inp.value, 10) || 0);
+      });
+      state.entries.unshift({
+        id: `ent-${Date.now()}`,
+        categoryId,
+        zionId,
+        date,
+        notes,
+        counts
+      });
+      saveState();
+      state.publicSubmitted = true;
+      showToast('Survey response submitted');
+      render();
+    }
+
+    // ============================================================================
+    // FILTER & TAB HANDLERS
+    // ============================================================================
+    function updateFilter(key, value) {
+      state.filters[key] = value;
+      render();
+    }
+
+    function resetFilters() {
+      state.filters.zion = 'all';
+      state.filters.dateFrom = '';
+      state.filters.dateTo = '';
+      state.filters.search = '';
+      state.filters.customRules = state.filters.customRules.map(r => ({ ...r, enabled: false }));
+      render();
+    }
+
+    function toggleCustomRule(ruleId) {
+      state.filters.customRules = state.filters.customRules.map(r => r.id === ruleId ? { ...r, enabled: !r.enabled } : r);
+      render();
+    }
+
+    function deleteCustomRule(ruleId) {
+      state.filters.customRules = state.filters.customRules.filter(r => r.id !== ruleId);
+      render();
+    }
+
+    function switchTab(tab) {
+      state.activeTab = tab;
+      render();
+    }
+
+    function exportCategoryCSV(catId) {
+      const cat = state.categories.find(c => c.id === catId);
+      if (!cat) return;
+      const filteredEntries = getFilteredCategoryEntries(catId);
+      const headers = ['Category', 'Date', 'Zion', 'Notes', ...state.ageGroups.map(ag => ag.label), 'Male Total', 'Female Total', 'Grand Total'];
+      const rows = filteredEntries.map(entry => {
+        const zName = state.zions.find(z => z.id === entry.zionId)?.name || 'Unknown';
+        const s = getEntryGenderStats(entry);
+        return [
+          `"${cat.name.replace(/"/g, '""')}"`,
+          entry.date,
+          `"${zName.replace(/"/g, '""')}"`,
+          `"${(entry.notes || '').replace(/"/g, '""')}"`,
+          ...state.ageGroups.map(ag => Number(entry.counts?.[ag.id]) || 0),
+          s.maleTotal,
+          s.femaleTotal,
+          s.grandTotal
+        ].join(',');
+      });
+      const csv = [headers.join(','), ...rows].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${cat.name.toLowerCase().replace(/\s+/g, '_')}_survey_${getTodayISO()}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('CSV exported successfully');
+    }
+
+    // ============================================================================
+    // MODALS (ADD/EDIT SURVEY, ENTRY FORM, CUSTOM FILTER RULE, MANAGE FIELDS, CONFIRM)
+    // ============================================================================
+    function closeModal() {
+      document.getElementById('modal-root').innerHTML = '';
+    }
+
+    // --- Modal 1: Add / Edit Survey ---
+    function openCategoryModal(mode, catId = null) {
+      const cat = catId ? state.categories.find(c => c.id === catId) : null;
+      const selectedColor = cat?.color || 'indigo';
+
+      document.getElementById('modal-root').innerHTML = `
+        <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+          <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-md overflow-hidden animate-fade-in">
+            <div class="px-5 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+              <h3 class="text-base font-bold text-slate-900">${mode === 'add' ? 'Add Survey' : 'Edit Survey'}</h3>
+              <button onclick="closeModal()" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700"><i data-lucide="x" class="w-4 h-4"></i></button>
+            </div>
+            <form onsubmit="submitCategoryModal(event, '${mode}', '${catId || ''}')" class="p-5 space-y-4">
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1">Survey Name *</label>
+                <input id="cat-modal-name" type="text" value="${escapeHtml(cat?.name || '')}" placeholder="e.g., Gathering, Education, Online Meeting..." required autofocus class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-900" />
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1">Description (Optional)</label>
+                <input id="cat-modal-desc" type="text" value="${escapeHtml(cat?.description || '')}" placeholder="Brief summary of this survey..." class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900" />
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-2">Folder Color</label>
+                <input id="cat-modal-color" type="hidden" value="${selectedColor}" />
+                <div class="flex flex-wrap gap-2" id="cat-color-picker">
+                  ${FOLDER_COLORS.map(c => `
+                    <button type="button" onclick="selectFolderColor('${c.id}')" data-color="${c.id}" class="color-opt w-8 h-8 rounded-xl ${c.tab} flex items-center justify-center text-white transition-transform ${selectedColor === c.id ? 'ring-2 ring-offset-2 ring-slate-800 scale-105' : 'opacity-80 hover:opacity-100'}">
+                      ${selectedColor === c.id ? '<i data-lucide="check" class="w-4 h-4"></i>' : ''}
+                    </button>
+                  `).join('')}
+                </div>
+              </div>
+              <div class="pt-3 border-t border-slate-100 flex justify-end gap-2">
+                <button type="button" onclick="closeModal()" class="px-4 py-2 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-100">Cancel</button>
+                <button type="submit" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold">${mode === 'add' ? 'Add Survey' : 'Save Changes'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      `;
+      lucide.createIcons();
+    }
+
+    function selectFolderColor(colorId) {
+      document.getElementById('cat-modal-color').value = colorId;
+      document.querySelectorAll('.color-opt').forEach(btn => {
+        if (btn.dataset.color === colorId) {
+          btn.classList.add('ring-2', 'ring-offset-2', 'ring-slate-800', 'scale-105');
+          btn.classList.remove('opacity-80');
+          btn.innerHTML = '<i data-lucide="check" class="w-4 h-4"></i>';
+        } else {
+          btn.classList.remove('ring-2', 'ring-offset-2', 'ring-slate-800', 'scale-105');
+          btn.classList.add('opacity-80');
+          btn.innerHTML = '';
+        }
+      });
+      lucide.createIcons();
+    }
+
+    function submitCategoryModal(e, mode, catId) {
+      e.preventDefault();
+      const name = document.getElementById('cat-modal-name').value.trim();
+      const description = document.getElementById('cat-modal-desc').value.trim();
+      const color = document.getElementById('cat-modal-color').value;
+      if (!name) return;
+
+      if (mode === 'add') {
+        state.categories.push({ id: `cat-${Date.now()}`, name, description, color });
+        showToast(`Survey "${name}" created`);
+      } else if (catId) {
+        state.categories = state.categories.map(c => c.id === catId ? { ...c, name, description, color } : c);
+        showToast(`Survey "${name}" updated`);
+      }
+      saveState();
+      closeModal();
+      render();
+    }
+
+    function confirmDeleteCategory(catId) {
+      const cat = state.categories.find(c => c.id === catId);
+      if (!cat) return;
+      openConfirmModal(
+        `Delete "${cat.name}"?`,
+        `This will permanently remove the "${cat.name}" survey folder and all its recorded entries.`,
+        () => {
+          state.categories = state.categories.filter(c => c.id !== catId);
+          state.entries = state.entries.filter(e => e.categoryId !== catId);
+          if (state.selectedCategoryId === catId) {
+            state.route = 'home';
+            state.selectedCategoryId = null;
+          }
+          saveState();
+          closeModal();
+          showToast(`Deleted "${cat.name}"`);
+          render();
+        }
+      );
+    }
+
+    // --- Modal 2: Add / Edit Survey Entry ---
+    function openEntryModal(mode, entryId = null) {
+      const cat = state.categories.find(c => c.id === state.selectedCategoryId);
+      const entry = entryId ? state.entries.find(e => e.id === entryId) : null;
+      const selectedZion = entry?.zionId || (state.zions[0]?.id || '');
+
+      document.getElementById('modal-root').innerHTML = `
+        <div class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-xs overflow-y-auto">
+          <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-2xl overflow-hidden my-auto animate-fade-in">
+            <div class="px-5 sm:px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+              <div>
+                <span class="text-[11px] font-bold uppercase tracking-wider text-indigo-600">${escapeHtml(cat?.name || '')}</span>
+                <h3 class="text-lg font-bold text-slate-900">${mode === 'add' ? 'New Survey Entry' : 'Edit Survey Entry'}</h3>
+              </div>
+              <button onclick="closeModal()" class="p-2 rounded-xl text-slate-400 hover:text-slate-700"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+
+            <form onsubmit="submitEntryModal(event, '${mode}', '${entryId || ''}')" class="p-5 sm:p-6 space-y-5 max-h-[82vh] overflow-y-auto">
+              <div class="p-4 rounded-xl bg-indigo-50/50 border border-indigo-100 space-y-3">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <label class="text-xs font-bold uppercase tracking-wider text-indigo-900 flex items-center gap-1.5">
+                    <i data-lucide="map-pin" class="w-3.5 h-3.5 text-indigo-600"></i>
+                    <span>1. Select Zion Location</span>
+                  </label>
+                  <div class="flex items-center gap-1.5">
+                    <button type="button" onclick="toggleInlineZionInput('add')" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700">
+                      <i data-lucide="plus" class="w-3 h-3"></i><span>Add Zion</span>
+                    </button>
+                    <button type="button" onclick="toggleInlineZionInput('edit')" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-slate-700 text-xs font-semibold hover:bg-slate-50">
+                      <i data-lucide="edit-2" class="w-3 h-3 text-indigo-600"></i><span>Edit</span>
+                    </button>
+                  </div>
+                </div>
+
+                <select id="entry-zion-select" class="w-full px-3.5 py-2.5 bg-white border border-indigo-200 rounded-xl text-sm font-semibold text-slate-900">
+                  ${state.zions.map(z => `<option value="${z.id}" ${z.id === selectedZion ? 'selected' : ''}>${escapeHtml(z.name)}</option>`).join('')}
+                </select>
+
+                <div id="inline-zion-editor" class="hidden flex items-center gap-2 pt-1">
+                  <input id="inline-zion-mode" type="hidden" value="add" />
+                  <input id="inline-zion-input" type="text" placeholder="Enter Zion name..." class="flex-1 px-3 py-2 bg-white border border-indigo-300 rounded-lg text-sm" />
+                  <button type="button" onclick="saveInlineZion()" class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold">Save</button>
+                  <button type="button" onclick="document.getElementById('inline-zion-editor').classList.add('hidden')" class="px-2.5 py-2 rounded-lg bg-slate-200 text-slate-700 text-xs font-semibold">Cancel</button>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">Survey Date</label>
+                  <input id="entry-date" type="date" value="${entry?.date || getTodayISO()}" required class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800" />
+                </div>
+                <div>
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">Session / Remarks (Optional)</label>
+                  <input id="entry-notes" type="text" value="${escapeHtml(entry?.notes || '')}" placeholder="e.g., Sunday Service, Youth Class..." class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800" />
+                </div>
+              </div>
+
+              <div class="space-y-3">
+                <div class="flex items-center justify-between">
+                  <label class="text-xs font-bold uppercase tracking-wider text-slate-700">2. Participants by Age Group</label>
+                  <button type="button" onclick="document.getElementById('inline-ag-adder').classList.toggle('hidden')" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 text-xs font-semibold">
+                    <i data-lucide="plus" class="w-3.5 h-3.5"></i><span>Add Age Group</span>
+                  </button>
+                </div>
+
+                <div id="inline-ag-adder" class="hidden flex flex-wrap items-center gap-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                  <input id="inline-ag-label" type="text" placeholder="e.g., Male Seniors, Female Kids..." class="flex-1 min-w-[160px] px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm" />
+                  <select id="inline-ag-gender" class="px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-700">
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                    <option value="other">Other</option>
+                  </select>
+                  <button type="button" onclick="addInlineAgeGroup('${mode}', '${entryId || ''}')" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold">Add</button>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" id="entry-ag-grid">
+                  ${state.ageGroups.map(ag => `
+                    <div class="p-3 rounded-xl bg-slate-50 border border-slate-200/90">
+                      <div class="flex items-center justify-between gap-2 mb-1.5">
+                        <label class="text-xs font-semibold text-slate-700 truncate">${escapeHtml(ag.label)}</label>
+                        ${state.ageGroups.length > 1 ? `
+                          <button type="button" onclick="removeInlineAgeGroup('${ag.id}', '${mode}', '${entryId || ''}')" title="Remove Age Group" class="p-1 rounded text-slate-400 hover:text-rose-600">
+                            <i data-lucide="trash-2" class="w-3 h-3"></i>
+                          </button>
+                        ` : ''}
+                      </div>
+                      <input type="number" min="0" inputmode="numeric" placeholder="0" value="${entry?.counts?.[ag.id] ?? ''}" data-ag-id="${ag.id}" oninput="updateModalLiveTotals()" class="entry-ag-input w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-base font-bold text-slate-900 tabular-nums" />
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+
+              <div class="pt-4 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div class="flex flex-wrap items-center gap-2">
+                  <div class="px-3 py-1.5 rounded-xl bg-sky-50 border border-sky-100 text-xs">
+                    <span class="text-sky-700 font-semibold">Male: </span>
+                    <span id="modal-live-male" class="font-extrabold text-sky-900 tabular-nums">0</span>
+                  </div>
+                  <div class="px-3 py-1.5 rounded-xl bg-rose-50 border border-rose-100 text-xs">
+                    <span class="text-rose-700 font-semibold">Female: </span>
+                    <span id="modal-live-female" class="font-extrabold text-rose-900 tabular-nums">0</span>
+                  </div>
+                  <div class="px-3.5 py-1.5 rounded-xl bg-indigo-50 border border-indigo-100 text-xs">
+                    <span class="text-indigo-800 font-semibold">Total: </span>
+                    <span id="modal-live-total" class="text-base font-extrabold text-indigo-700 tabular-nums">0</span>
+                  </div>
+                </div>
+
+                <div class="flex items-center justify-end gap-2.5">
+                  <button type="button" onclick="closeModal()" class="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-100">Cancel</button>
+                  <button type="submit" class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold shadow-sm">${mode === 'add' ? 'Save Survey Entry' : 'Update Entry'}</button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      `;
+      lucide.createIcons();
+      updateModalLiveTotals();
+    }
+
+    function toggleInlineZionInput(action) {
+      const box = document.getElementById('inline-zion-editor');
+      const modeInp = document.getElementById('inline-zion-mode');
+      const textInp = document.getElementById('inline-zion-input');
+      const select = document.getElementById('entry-zion-select');
+      box.classList.remove('hidden');
+      modeInp.value = action;
+      if (action === 'edit') {
+        const z = state.zions.find(item => item.id === select.value);
+        textInp.value = z ? z.name : '';
+      } else {
+        textInp.value = '';
+      }
+      textInp.focus();
+    }
+
+    function saveInlineZion() {
+      const mode = document.getElementById('inline-zion-mode').value;
+      const val = document.getElementById('inline-zion-input').value.trim();
+      const select = document.getElementById('entry-zion-select');
+      if (!val) return;
+
+      if (mode === 'add') {
+        const newZ = { id: `zion-${Date.now()}`, name: val };
+        state.zions.push(newZ);
+        const opt = document.createElement('option');
+        opt.value = newZ.id;
+        opt.textContent = newZ.name;
+        opt.selected = true;
+        select.appendChild(opt);
+        showToast(`Zion "${val}" added`);
+      } else {
+        const targetId = select.value;
+        state.zions = state.zions.map(z => z.id === targetId ? { ...z, name: val } : z);
+        const opt = select.querySelector(`option[value="${targetId}"]`);
+        if (opt) opt.textContent = val;
+        showToast(`Zion renamed to "${val}"`);
+      }
+      saveState();
+      document.getElementById('inline-zion-editor').classList.add('hidden');
+    }
+
+    function addInlineAgeGroup(mode, entryId) {
+      const label = document.getElementById('inline-ag-label').value.trim();
+      const gender = document.getElementById('inline-ag-gender').value;
+      if (!label) return;
+      state.ageGroups.push({ id: `ag-${Date.now()}`, label, gender });
+      saveState();
+      openEntryModal(mode, entryId || null);
+      showToast(`Age group "${label}" added`);
+    }
+
+    function removeInlineAgeGroup(agId, mode, entryId) {
+      if (state.ageGroups.length <= 1) return;
+      state.ageGroups = state.ageGroups.filter(ag => ag.id !== agId);
+      saveState();
+      openEntryModal(mode, entryId || null);
+      showToast('Age group removed');
+    }
+
+    function updateModalLiveTotals() {
+      const counts = {};
+      document.querySelectorAll('.entry-ag-input').forEach(inp => {
+        counts[inp.dataset.agId] = inp.value;
+      });
+      const stats = getEntryGenderStats({ counts });
+      document.getElementById('modal-live-male').textContent = stats.maleTotal;
+      document.getElementById('modal-live-female').textContent = stats.femaleTotal;
+      document.getElementById('modal-live-total').textContent = stats.grandTotal;
+    }
+
+    function submitEntryModal(e, mode, entryId) {
+      e.preventDefault();
+      const zionId = document.getElementById('entry-zion-select').value;
+      const date = document.getElementById('entry-date').value;
+      const notes = document.getElementById('entry-notes').value.trim();
+      const counts = {};
+      document.querySelectorAll('.entry-ag-input').forEach(inp => {
+        counts[inp.dataset.agId] = Math.max(0, parseInt(inp.value, 10) || 0);
+      });
+
+      if (mode === 'edit' && entryId) {
+        state.entries = state.entries.map(ent => ent.id === entryId ? { ...ent, zionId, date, notes, counts } : ent);
+        showToast('Survey entry updated');
+      } else {
+        state.entries.unshift({
+          id: `ent-${Date.now()}`,
+          categoryId: state.selectedCategoryId,
+          zionId,
+          date,
+          notes,
+          counts
+        });
+        showToast('Survey entry saved');
+      }
+      saveState();
+      closeModal();
+      render();
+    }
+
+    function confirmDeleteEntry(entryId) {
+      openConfirmModal(
+        'Delete Survey Entry?',
+        'Are you sure you want to delete this survey record? This action cannot be undone.',
+        () => {
+          state.entries = state.entries.filter(e => e.id !== entryId);
+          saveState();
+          closeModal();
+          showToast('Entry deleted');
+          render();
+        }
+      );
+    }
+
+    // --- Modal 3: Custom Filter / Search Rule Builder ---
+    function openFilterRuleModal(mode, ruleId = null) {
+      const rule = ruleId ? state.filters.customRules.find(r => r.id === ruleId) : null;
+      const field = rule?.field || 'maleTotal';
+      const operator = rule?.operator || '>=';
+      const value = rule?.value !== undefined ? String(rule.value) : '10';
+
+      document.getElementById('modal-root').innerHTML = `
+        <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+          <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-md overflow-hidden animate-fade-in">
+            <div class="px-5 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+              <h3 class="text-base font-bold text-slate-900">${mode === 'add' ? 'Add Custom Filter / Search Rule' : 'Edit Filter Rule'}</h3>
+              <button onclick="closeModal()" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700"><i data-lucide="x" class="w-4 h-4"></i></button>
+            </div>
+            <form onsubmit="submitFilterRuleModal(event, '${mode}', '${ruleId || ''}')" class="p-5 space-y-4">
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1">Target Field</label>
+                <select id="rule-field" onchange="refreshFilterRuleInputs()" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-900">
+                  <optgroup label="Gender &amp; Grand Totals">
+                    <option value="maleTotal" ${field === 'maleTotal' ? 'selected' : ''}>Male Total</option>
+                    <option value="femaleTotal" ${field === 'femaleTotal' ? 'selected' : ''}>Female Total</option>
+                    <option value="grandTotal" ${field === 'grandTotal' ? 'selected' : ''}>Grand Total</option>
+                  </optgroup>
+                  <optgroup label="Location &amp; Remarks">
+                    <option value="zion" ${field === 'zion' ? 'selected' : ''}>Zion Location</option>
+                    <option value="notes" ${field === 'notes' ? 'selected' : ''}>Search / Remarks</option>
+                  </optgroup>
+                  <optgroup label="Specific Age Groups">
+                    ${state.ageGroups.map(ag => `<option value="${ag.id}" ${field === ag.id ? 'selected' : ''}>${escapeHtml(ag.label)}</option>`).join('')}
+                  </optgroup>
+                </select>
+              </div>
+              <div id="rule-dynamic-fields"></div>
+              <div class="pt-3 border-t border-slate-100 flex justify-end gap-2">
+                <button type="button" onclick="closeModal()" class="px-4 py-2 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-100">Cancel</button>
+                <button type="submit" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold">${mode === 'add' ? 'Add Filter' : 'Save Filter'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      `;
+      lucide.createIcons();
+      refreshFilterRuleInputs(operator, value);
+    }
+
+    function refreshFilterRuleInputs(presetOp = null, presetVal = null) {
+      const field = document.getElementById('rule-field').value;
+      const container = document.getElementById('rule-dynamic-fields');
+
+      if (field === 'zion') {
+        const op = presetOp || 'equals';
+        const val = presetVal || (state.zions[0]?.id || '');
+        container.innerHTML = `
+          <div class="space-y-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Condition</label>
+              <select id="rule-operator" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-900">
+                <option value="equals" ${op === 'equals' ? 'selected' : ''}>Is</option>
+                <option value="not_equals" ${op === 'not_equals' ? 'selected' : ''}>Is Not</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Zion</label>
+              <select id="rule-value" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-900">
+                ${state.zions.map(z => `<option value="${z.id}" ${val === z.id ? 'selected' : ''}>${escapeHtml(z.name)}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+        `;
+      } else if (field === 'notes') {
+        const op = presetOp || 'contains';
+        const val = presetVal ?? '';
+        container.innerHTML = `
+          <div class="space-y-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Condition</label>
+              <select id="rule-operator" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-900">
+                <option value="contains" ${op === 'contains' ? 'selected' : ''}>Contains</option>
+                <option value="not_contains" ${op === 'not_contains' ? 'selected' : ''}>Does Not Contain</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Keyword</label>
+              <input id="rule-value" type="text" value="${escapeHtml(val)}" placeholder="Enter keyword..." required class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900" />
+            </div>
+          </div>
+        `;
+      } else {
+        const op = presetOp || '>=';
+        const val = presetVal ?? '10';
+        container.innerHTML = `
+          <div class="space-y-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Condition</label>
+              <select id="rule-operator" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-900">
+                <option value=">=" ${op === '>=' ? 'selected' : ''}>Greater than or equal (&gt;=)</option>
+                <option value="<=" ${op === '<=' ? 'selected' : ''}>Less than or equal (&lt;=)</option>
+                <option value=">" ${op === '>' ? 'selected' : ''}>Greater than (&gt;)</option>
+                <option value="<" ${op === '<' ? 'selected' : ''}>Less than (&lt;)</option>
+                <option value="==" ${op === '==' ? 'selected' : ''}>Equals (==)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">Count Value</label>
+              <input id="rule-value" type="number" min="0" value="${escapeHtml(val)}" required class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900" />
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    function submitFilterRuleModal(e, mode, ruleId) {
+      e.preventDefault();
+      const field = document.getElementById('rule-field').value;
+      const operator = document.getElementById('rule-operator').value;
+      const value = document.getElementById('rule-value').value;
+      if (String(value).trim() === '') return;
+
+      if (mode === 'add') {
+        state.filters.customRules.push({ id: `rule-${Date.now()}`, field, operator, value, enabled: true });
+        showToast('Custom filter rule added');
+      } else if (ruleId) {
+        state.filters.customRules = state.filters.customRules.map(r => r.id === ruleId ? { ...r, field, operator, value } : r);
+        showToast('Custom filter rule updated');
+      }
+      closeModal();
+      render();
+    }
+
+    // --- Modal 4: Manage Zions & Age Groups ---
+    function openManageFieldsModal() {
+      document.getElementById('modal-root').innerHTML = `
+        <div class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-xs overflow-y-auto">
+          <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-3xl overflow-hidden my-auto animate-fade-in">
+            <div class="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+              <div>
+                <h3 class="text-lg font-bold text-slate-900">Manage Zions &amp; Age Groups</h3>
+                <p class="text-xs text-slate-500">Add, rename, or remove Zions and demographic age groups.</p>
+              </div>
+              <button onclick="closeModal()" class="p-2 rounded-xl text-slate-400 hover:text-slate-700"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+
+            <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-6 max-h-[75vh] overflow-y-auto">
+              <!-- Zions Column -->
+              <div class="space-y-3">
+                <h4 class="text-xs font-bold uppercase tracking-wider text-indigo-600 flex items-center gap-1.5">
+                  <i data-lucide="map-pin" class="w-3.5 h-3.5"></i><span>Zions (${state.zions.length})</span>
+                </h4>
+                <form onsubmit="addManagedZion(event)" class="flex gap-2">
+                  <input id="manage-new-zion" type="text" placeholder="Add new Zion..." class="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
+                  <button type="submit" class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold">Add</button>
+                </form>
+                <div class="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                  ${state.zions.map(z => `
+                    <div class="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200/70">
+                      <span class="text-sm font-medium text-slate-800">${escapeHtml(z.name)}</span>
+                      <div class="flex items-center gap-1">
+                        <button onclick="promptRenameZion('${z.id}')" class="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-white"><i data-lucide="edit-2" class="w-3.5 h-3.5"></i></button>
+                        ${state.zions.length > 1 ? `<button onclick="deleteManagedZion('${z.id}')" class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-white"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>` : ''}
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+
+              <!-- Age Groups Column -->
+              <div class="space-y-3">
+                <h4 class="text-xs font-bold uppercase tracking-wider text-emerald-600 flex items-center gap-1.5">
+                  <i data-lucide="users" class="w-3.5 h-3.5"></i><span>Age / Demographic Groups (${state.ageGroups.length})</span>
+                </h4>
+                <form onsubmit="addManagedAgeGroup(event)" class="flex gap-2">
+                  <input id="manage-new-ag" type="text" placeholder="Add new Age Group..." class="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
+                  <select id="manage-new-ag-gender" class="px-2 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700">
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                    <option value="other">Other</option>
+                  </select>
+                  <button type="submit" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold">Add</button>
+                </form>
+                <div class="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                  ${state.ageGroups.map(ag => {
+                    const g = ag.gender || inferGenderFromLabel(ag.label);
+                    return `
+                      <div class="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200/70">
+                        <div class="flex items-center gap-2 min-w-0">
+                          <span class="text-sm font-medium text-slate-800 truncate">${escapeHtml(ag.label)}</span>
+                          <span class="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0 ${g === 'male' ? 'bg-sky-100 text-sky-700' : g === 'female' ? 'bg-rose-100 text-rose-700' : 'bg-slate-200 text-slate-600'}">${g}</span>
+                        </div>
+                        <div class="flex items-center gap-1 shrink-0">
+                          <button onclick="promptRenameAgeGroup('${ag.id}')" class="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-white"><i data-lucide="edit-2" class="w-3.5 h-3.5"></i></button>
+                          ${state.ageGroups.length > 1 ? `<button onclick="deleteManagedAgeGroup('${ag.id}')" class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-white"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>` : ''}
+                        </div>
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
+              </div>
+            </div>
+
+            <div class="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex justify-end">
+              <button onclick="closeModal(); render();" class="px-5 py-2 rounded-xl bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800">Done</button>
+            </div>
+          </div>
+        </div>
+      `;
+      lucide.createIcons();
+    }
+
+    function addManagedZion(e) {
+      e.preventDefault();
+      const val = document.getElementById('manage-new-zion').value.trim();
+      if (!val) return;
+      state.zions.push({ id: `zion-${Date.now()}`, name: val });
+      saveState();
+      openManageFieldsModal();
+      showToast(`Zion "${val}" added`);
+    }
+
+    function promptRenameZion(id) {
+      const z = state.zions.find(item => item.id === id);
+      if (!z) return;
+      document.getElementById('modal-root').innerHTML = `
+        <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+          <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-sm p-5 space-y-4">
+            <h3 class="text-base font-bold text-slate-900">Rename Zion</h3>
+            <input id="rename-zion-val" type="text" value="${escapeHtml(z.name)}" autofocus class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold" />
+            <div class="flex justify-end gap-2">
+              <button onclick="openManageFieldsModal()" class="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700">Cancel</button>
+              <button onclick="saveRenamedZion('${id}')" class="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 text-white">Save</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function saveRenamedZion(id) {
+      const val = document.getElementById('rename-zion-val').value.trim();
+      if (!val) return;
+      state.zions = state.zions.map(z => z.id === id ? { ...z, name: val } : z);
+      saveState();
+      openManageFieldsModal();
+      showToast('Zion updated');
+    }
+
+    function deleteManagedZion(id) {
+      if (state.zions.length <= 1) return;
+      state.zions = state.zions.filter(z => z.id !== id);
+      saveState();
+      openManageFieldsModal();
+      showToast('Zion removed');
+    }
+
+    function addManagedAgeGroup(e) {
+      e.preventDefault();
+      const label = document.getElementById('manage-new-ag').value.trim();
+      const gender = document.getElementById('manage-new-ag-gender').value;
+      if (!label) return;
+      state.ageGroups.push({ id: `ag-${Date.now()}`, label, gender });
+      saveState();
+      openManageFieldsModal();
+      showToast(`Age group "${label}" added`);
+    }
+
+    function promptRenameAgeGroup(id) {
+      const ag = state.ageGroups.find(item => item.id === id);
+      if (!ag) return;
+      const g = ag.gender || inferGenderFromLabel(ag.label);
+      document.getElementById('modal-root').innerHTML = `
+        <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+          <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-sm p-5 space-y-4">
+            <h3 class="text-base font-bold text-slate-900">Edit Age Group</h3>
+            <input id="rename-ag-val" type="text" value="${escapeHtml(ag.label)}" autofocus class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold" />
+            <select id="rename-ag-gender" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold">
+              <option value="male" ${g === 'male' ? 'selected' : ''}>Male</option>
+              <option value="female" ${g === 'female' ? 'selected' : ''}>Female</option>
+              <option value="other" ${g === 'other' ? 'selected' : ''}>Other</option>
+            </select>
+            <div class="flex justify-end gap-2">
+              <button onclick="openManageFieldsModal()" class="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700">Cancel</button>
+              <button onclick="saveRenamedAgeGroup('${id}')" class="px-4 py-2 rounded-xl text-xs font-semibold bg-emerald-600 text-white">Save</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function saveRenamedAgeGroup(id) {
+      const label = document.getElementById('rename-ag-val').value.trim();
+      const gender = document.getElementById('rename-ag-gender').value;
+      if (!label) return;
+      state.ageGroups = state.ageGroups.map(ag => ag.id === id ? { ...ag, label, gender } : ag);
+      saveState();
+      openManageFieldsModal();
+      showToast('Age group updated');
+    }
+
+    function deleteManagedAgeGroup(id) {
+      if (state.ageGroups.length <= 1) return;
+      state.ageGroups = state.ageGroups.filter(ag => ag.id !== id);
+      saveState();
+      openManageFieldsModal();
+      showToast('Age group removed');
+    }
+
+    // --- Modal 5: Custom Confirm Modal ---
+    function openConfirmModal(title, message, onConfirmCallback) {
+      window.__confirmAction = onConfirmCallback;
+      document.getElementById('modal-root').innerHTML = `
+        <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+          <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-sm p-5 space-y-4 animate-fade-in">
+            <div class="flex items-start gap-3">
+              <div class="w-10 h-10 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                <i data-lucide="trash-2" class="w-5 h-5"></i>
+              </div>
+              <div>
+                <h3 class="text-base font-bold text-slate-900">${escapeHtml(title)}</h3>
+                <p class="text-xs text-slate-500 mt-1 leading-relaxed">${escapeHtml(message)}</p>
+              </div>
+            </div>
+            <div class="flex justify-end gap-2 pt-2">
+              <button onclick="closeModal()" class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200">Cancel</button>
+              <button onclick="window.__confirmAction && window.__confirmAction()" class="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700">Delete</button>
+            </div>
+          </div>
+        </div>
+      `;
+      lucide.createIcons();
+    }
+
+    // ============================================================================
+    // BOOTSTRAP APPLICATION
+    // ============================================================================
+    window.addEventListener('hashchange', syncFromHash);
+    window.onload = function () {
+      loadState();
+      syncFromHash();
+      render();
+    };
+  </script>
+</body>
+</html>
