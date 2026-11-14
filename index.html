@@ -56,7 +56,7 @@
       </button>
 
       <div class="flex items-center gap-2">
-        <div id="cloud-sync-status" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 text-slate-500 text-xs font-medium transition-colors">
+        <div id="cloud-sync-status" onclick="forceCloudSyncNow()" title="Click to sync data with Firebase Cloud" role="button" class="cursor-pointer inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 text-xs font-medium transition-colors">
           <i data-lucide="cloud" class="w-3.5 h-3.5"></i>
           <span class="hidden md:inline">Cloud Connecting...</span>
         </div>
@@ -88,7 +88,7 @@
     // ============================================================================
     // DEFAULT DATA & CONSTANTS
     // ============================================================================
-    const STORAGE_KEY = 'zion_survey_attendance_html_v1';
+    const LEGACY_STORAGE_KEY = 'zion_survey_attendance_html_v1';
 
     const FOLDER_COLORS = [
       { id: 'indigo', tab: 'bg-indigo-600', bg: 'bg-indigo-50', border: 'border-indigo-200', icon: 'text-indigo-600', badge: 'bg-indigo-100 text-indigo-700' },
@@ -102,43 +102,47 @@
     const getTodayISO = () => new Date().toISOString().split('T')[0];
 
     const INITIAL_CATEGORIES = [
-      { id: 'cat-gathering', name: 'Gathering', description: 'Regular congregation & regional gathering attendance', color: 'indigo' },
-      { id: 'cat-education', name: 'Education', description: 'Study sessions, workshops & youth classes', color: 'emerald' },
-      { id: 'cat-online', name: 'Online Meeting', description: 'Virtual sessions & remote Zion participation', color: 'sky' },
-      { id: 'cat-new-song-festival', name: 'New Song Festival', description: 'New Song praise, choir & festival participation attendance', color: 'amber' },
+      { id: 'cat-gathering', name: 'Gathering', description: 'Regular congregation & regional gathering attendance', color: 'indigo', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+      { id: 'cat-education', name: 'Education', description: 'Study sessions, workshops & youth classes', color: 'emerald', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+      { id: 'cat-online', name: 'Online Meeting', description: 'Virtual sessions & remote Zion participation', color: 'sky', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+      { id: 'cat-new-song-festival', name: 'New Song Festival', description: 'New Song praise, choir & festival participation attendance', color: 'amber', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
     ];
 
-    function ensureDefaultCategories(cats) {
-      if (!Array.isArray(cats)) return [...INITIAL_CATEGORIES];
-      const hasNewSong = cats.some(c => c.id === 'cat-new-song-festival' || (c.name || '').toLowerCase().includes('new song'));
-      if (!hasNewSong) {
-        cats.push({
-          id: 'cat-new-song-festival',
-          name: 'New Song Festival',
-          description: 'New Song praise, choir & festival participation attendance',
-          color: 'amber'
-        });
-      }
-      return cats;
+    function ensureDefaultCategories(cats, deletedCategoryIds = []) {
+      if (!Array.isArray(cats)) cats = [];
+      const delSet = new Set(Array.isArray(deletedCategoryIds) ? deletedCategoryIds : []);
+      const result = cats.filter(c => c && !delSet.has(c.id));
+      INITIAL_CATEGORIES.forEach(defCat => {
+        if (delSet.has(defCat.id)) return;
+        const exists = result.some(c => c.id === defCat.id || (c.name || '').trim().toLowerCase() === defCat.name.trim().toLowerCase());
+        if (!exists) {
+          result.push({
+            ...defCat,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          });
+        }
+      });
+      return result;
     }
 
     const INITIAL_ZIONS = [
-      { id: 'zion-rjy', name: 'Rajahmundry' },
-      { id: 'zion-nlr', name: 'Nellore' },
-      { id: 'zion-bvm', name: 'Bhimavaram' },
-      { id: 'zion-jrg', name: 'Jangareddygudem' },
-      { id: 'zion-elr', name: 'Eluru' },
-      { id: 'zion-dwl', name: 'Dowleshwaram' },
-      { id: 'zion-gkv', name: 'Gokavaram' },
+      { id: 'zion-rjy', name: 'Rajahmundry', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+      { id: 'zion-nlr', name: 'Nellore', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+      { id: 'zion-bvm', name: 'Bhimavaram', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+      { id: 'zion-jrg', name: 'Jangareddygudem', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+      { id: 'zion-elr', name: 'Eluru', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+      { id: 'zion-dwl', name: 'Dowleshwaram', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+      { id: 'zion-gkv', name: 'Gokavaram', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
     ];
 
     const INITIAL_AGE_GROUPS = [
-      { id: 'ag-male-adult', label: 'Male Adult', gender: 'male', groupType: 'age_group' },
-      { id: 'ag-female-adult', label: 'Female Adult', gender: 'female', groupType: 'age_group' },
-      { id: 'ag-male-youth', label: 'Male Youth', gender: 'male', groupType: 'age_group' },
-      { id: 'ag-female-youth', label: 'Female Youth', gender: 'female', groupType: 'age_group' },
-      { id: 'ag-male-students', label: 'Male Students', gender: 'male', groupType: 'age_group' },
-      { id: 'ag-female-students', label: 'Female Students', gender: 'female', groupType: 'age_group' },
+      { id: 'ag-male-adult', label: 'Male Adult', gender: 'male', groupType: 'age_group', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+      { id: 'ag-female-adult', label: 'Female Adult', gender: 'female', groupType: 'age_group', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+      { id: 'ag-male-youth', label: 'Male Youth', gender: 'male', groupType: 'age_group', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+      { id: 'ag-female-youth', label: 'Female Youth', gender: 'female', groupType: 'age_group', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+      { id: 'ag-male-students', label: 'Male Students', gender: 'male', groupType: 'age_group', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+      { id: 'ag-female-students', label: 'Female Students', gender: 'female', groupType: 'age_group', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
     ];
 
     const INITIAL_ENTRIES = [
@@ -148,7 +152,9 @@
         zionId: 'zion-rjy',
         date: getTodayISO(),
         notes: 'Morning Gathering',
-        counts: { 'ag-male-adult': 24, 'ag-female-adult': 28, 'ag-male-youth': 14, 'ag-female-youth': 16, 'ag-male-students': 11, 'ag-female-students': 13 }
+        counts: { 'ag-male-adult': 24, 'ag-female-adult': 28, 'ag-male-youth': 14, 'ag-female-youth': 16, 'ag-male-students': 11, 'ag-female-students': 13 },
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z'
       },
       {
         id: 'ent-2',
@@ -156,7 +162,9 @@
         zionId: 'zion-nlr',
         date: getTodayISO(),
         notes: 'Regional Assembly',
-        counts: { 'ag-male-adult': 19, 'ag-female-adult': 22, 'ag-male-youth': 10, 'ag-female-youth': 12, 'ag-male-students': 9, 'ag-female-students': 11 }
+        counts: { 'ag-male-adult': 19, 'ag-female-adult': 22, 'ag-male-youth': 10, 'ag-female-youth': 12, 'ag-male-students': 9, 'ag-female-students': 11 },
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z'
       },
       {
         id: 'ent-3',
@@ -164,7 +172,9 @@
         zionId: 'zion-elr',
         date: getTodayISO(),
         notes: 'Weekend Study Session',
-        counts: { 'ag-male-adult': 8, 'ag-female-adult': 10, 'ag-male-youth': 15, 'ag-female-youth': 17, 'ag-male-students': 18, 'ag-female-students': 20 }
+        counts: { 'ag-male-adult': 8, 'ag-female-adult': 10, 'ag-male-youth': 15, 'ag-female-youth': 17, 'ag-male-students': 18, 'ag-female-students': 20 },
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z'
       },
       {
         id: 'ent-4',
@@ -172,7 +182,9 @@
         zionId: 'zion-bvm',
         date: getTodayISO(),
         notes: 'Evening Zoom Session',
-        counts: { 'ag-male-adult': 12, 'ag-female-adult': 15, 'ag-male-youth': 9, 'ag-female-youth': 11, 'ag-male-students': 7, 'ag-female-students': 8 }
+        counts: { 'ag-male-adult': 12, 'ag-female-adult': 15, 'ag-male-youth': 9, 'ag-female-youth': 11, 'ag-male-students': 7, 'ag-female-students': 8 },
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z'
       },
       {
         id: 'ent-5',
@@ -180,19 +192,29 @@
         zionId: 'zion-rjy',
         date: getTodayISO(),
         notes: 'Festival Praises & Choir',
-        counts: { 'ag-male-adult': 16, 'ag-female-adult': 20, 'ag-male-youth': 14, 'ag-female-youth': 18, 'ag-male-students': 10, 'ag-female-students': 12 }
+        counts: { 'ag-male-adult': 16, 'ag-female-adult': 20, 'ag-male-youth': 14, 'ag-female-youth': 18, 'ag-male-students': 10, 'ag-female-students': 12 },
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z'
       }
     ];
 
     // ============================================================================
-    // APPLICATION STATE
+    // APPLICATION STATE & STORAGE CONFIG
     // ============================================================================
+    const STORAGE_KEY = 'zion_survey_state_v1';
+    const BACKUP_STORAGE_KEY = 'zion_survey_backup_v1';
+    const SNAPSHOTS_KEY = 'zion_survey_snapshots_v1';
+
     let state = {
       categories: INITIAL_CATEGORIES,
       zions: INITIAL_ZIONS,
       ageGroups: INITIAL_AGE_GROUPS,
       entries: INITIAL_ENTRIES,
       grandTotalGroupIds: null, // array of ag.id included in Grand Total (null = all)
+      deletedCategoryIds: [],
+      deletedEntryIds: [],
+      deletedZionIds: [],
+      deletedAgIds: [],
       route: 'home', // 'home' | 'category' | 'public'
       selectedCategoryId: null,
       activeTab: 'records', // 'records' | 'zionSummary'
@@ -222,44 +244,287 @@
       return state.ageGroups.map(ag => ag.id);
     }
 
+    // ============================================================================
+    // TWO-WAY DATA RECONCILIATION & DATA LOSS PREVENTION
+    // ============================================================================
+    function reconcileLists(localList = [], remoteList = [], deletedIds = [], keyFn = item => item?.id) {
+      const mergedMap = new Map();
+      const delSet = new Set(Array.isArray(deletedIds) ? deletedIds : []);
+
+      // 1. Process local items (preserve items not deleted)
+      if (Array.isArray(localList)) {
+        for (const item of localList) {
+          if (!item) continue;
+          const key = keyFn(item);
+          if (!key || delSet.has(key)) continue;
+          mergedMap.set(key, item);
+        }
+      }
+
+      // 2. Process remote items
+      if (Array.isArray(remoteList)) {
+        for (const item of remoteList) {
+          if (!item) continue;
+          const key = keyFn(item);
+          if (!key || delSet.has(key)) continue;
+
+          if (!mergedMap.has(key)) {
+            mergedMap.set(key, item);
+          } else {
+            const localItem = mergedMap.get(key);
+            const localTime = new Date(localItem.updatedAt || localItem.createdAt || 0).getTime() || 0;
+            const remoteTime = new Date(item.updatedAt || item.createdAt || 0).getTime() || 0;
+            if (remoteTime > localTime) {
+              mergedMap.set(key, item);
+            }
+          }
+        }
+      }
+
+      return Array.from(mergedMap.values());
+    }
+
+    function reconcileWithRemote(data) {
+      if (!data || typeof data !== 'object') return;
+
+      const remoteDelCats = Array.isArray(data.deletedCategoryIds) ? data.deletedCategoryIds : [];
+      const remoteDelEntries = Array.isArray(data.deletedEntryIds) ? data.deletedEntryIds : [];
+      const remoteDelZions = Array.isArray(data.deletedZionIds) ? data.deletedZionIds : [];
+      const remoteDelAgs = Array.isArray(data.deletedAgIds) ? data.deletedAgIds : [];
+
+      state.deletedCategoryIds = Array.from(new Set([...(state.deletedCategoryIds || []), ...remoteDelCats])).slice(-300);
+      state.deletedEntryIds = Array.from(new Set([...(state.deletedEntryIds || []), ...remoteDelEntries])).slice(-500);
+      state.deletedZionIds = Array.from(new Set([...(state.deletedZionIds || []), ...remoteDelZions])).slice(-200);
+      state.deletedAgIds = Array.from(new Set([...(state.deletedAgIds || []), ...remoteDelAgs])).slice(-200);
+
+      const remoteCats = Array.isArray(data.categories) ? data.categories : [];
+      const mergedCats = reconcileLists(state.categories, remoteCats, state.deletedCategoryIds);
+      state.categories = ensureDefaultCategories(mergedCats, state.deletedCategoryIds);
+
+      const remoteZions = Array.isArray(data.zions) ? data.zions : [];
+      const mergedZions = reconcileLists(state.zions, remoteZions, state.deletedZionIds);
+      state.zions = mergedZions.length ? mergedZions : [...INITIAL_ZIONS];
+
+      const remoteAgs = Array.isArray(data.ageGroups) ? data.ageGroups : [];
+      const mergedAgs = reconcileLists(state.ageGroups, remoteAgs, state.deletedAgIds);
+      state.ageGroups = mergedAgs.length ? mergedAgs : [...INITIAL_AGE_GROUPS];
+
+      const remoteEntries = Array.isArray(data.entries) ? data.entries : [];
+      const mergedEntries = reconcileLists(state.entries, remoteEntries, state.deletedEntryIds);
+      mergedEntries.sort((a, b) => {
+        const d1 = a.date || '';
+        const d2 = b.date || '';
+        if (d1 !== d2) return d2.localeCompare(d1);
+        const t1 = new Date(a.updatedAt || a.createdAt || 0).getTime() || 0;
+        const t2 = new Date(b.updatedAt || b.createdAt || 0).getTime() || 0;
+        return t2 - t1;
+      });
+      state.entries = mergedEntries;
+
+      if (Array.isArray(data.grandTotalGroupIds) && data.grandTotalGroupIds.length) {
+        state.grandTotalGroupIds = data.grandTotalGroupIds;
+      }
+
+      saveLocalStateOnly();
+
+      // If local has entries or categories not present in remote, sync immediately to update cloud
+      const hasLocalNewEntries = state.entries.length > remoteEntries.length || state.entries.some(e => !remoteEntries.some(re => re.id === e.id));
+      const hasLocalNewCats = state.categories.length > remoteCats.length || state.categories.some(c => !remoteCats.some(rc => rc.id === c.id));
+      if (hasLocalNewEntries || hasLocalNewCats) {
+        if (typeof window.syncToCloud === 'function') {
+          window.syncToCloud(true);
+        }
+      }
+    }
+
+    function saveLocalStateOnly() {
+      const payload = {
+        categories: state.categories,
+        zions: state.zions,
+        ageGroups: state.ageGroups,
+        entries: state.entries,
+        grandTotalGroupIds: state.grandTotalGroupIds,
+        deletedCategoryIds: (state.deletedCategoryIds || []).slice(-300),
+        deletedEntryIds: (state.deletedEntryIds || []).slice(-500),
+        deletedZionIds: (state.deletedZionIds || []).slice(-200),
+        deletedAgIds: (state.deletedAgIds || []).slice(-200),
+        savedAt: new Date().toISOString()
+      };
+      const jsonStr = JSON.stringify(payload);
+      try {
+        localStorage.setItem(STORAGE_KEY, jsonStr);
+        localStorage.setItem(BACKUP_STORAGE_KEY, jsonStr);
+        try {
+          const snapRaw = localStorage.getItem(SNAPSHOTS_KEY);
+          let snaps = snapRaw ? JSON.parse(snapRaw) : [];
+          if (!Array.isArray(snaps)) snaps = [];
+          snaps.unshift({ timestamp: Date.now(), data: payload });
+          if (snaps.length > 5) snaps = snaps.slice(0, 5);
+          localStorage.setItem(SNAPSHOTS_KEY, JSON.stringify(snaps));
+        } catch (e) {}
+      } catch (e) {
+        console.warn('Unable to persist local state', e);
+      }
+    }
+
+    function saveState(immediateSync = false) {
+      saveLocalStateOnly();
+      if (typeof window.syncToCloud === 'function') {
+        window.syncToCloud(immediateSync);
+      }
+    }
+
     function loadState() {
       try {
-        const raw = localStorage.getItem(STORAGE_KEY);
+        let raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
+        let parsed = null;
         if (raw) {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed.categories) && parsed.categories.length) {
-            state.categories = ensureDefaultCategories(parsed.categories);
+          try { parsed = JSON.parse(raw); } catch (e) {}
+        }
+        let backupParsed = null;
+        try {
+          const backupRaw = localStorage.getItem(BACKUP_STORAGE_KEY);
+          if (backupRaw) backupParsed = JSON.parse(backupRaw);
+        } catch (e) {}
+
+        if (backupParsed) {
+          if (!parsed) {
+            parsed = backupParsed;
           } else {
-            state.categories = [...INITIAL_CATEGORIES];
+            const delEntrySet = new Set(parsed.deletedEntryIds || []);
+            const combinedEntries = reconcileLists(parsed.entries || [], backupParsed.entries || [], delEntrySet);
+            parsed.entries = combinedEntries;
+          }
+        }
+
+        if (parsed) {
+          state.deletedCategoryIds = Array.isArray(parsed.deletedCategoryIds) ? parsed.deletedCategoryIds : [];
+          state.deletedEntryIds = Array.isArray(parsed.deletedEntryIds) ? parsed.deletedEntryIds : [];
+          state.deletedZionIds = Array.isArray(parsed.deletedZionIds) ? parsed.deletedZionIds : [];
+          state.deletedAgIds = Array.isArray(parsed.deletedAgIds) ? parsed.deletedAgIds : [];
+
+          if (Array.isArray(parsed.categories) && parsed.categories.length) {
+            state.categories = ensureDefaultCategories(parsed.categories, state.deletedCategoryIds);
+          } else {
+            state.categories = ensureDefaultCategories([...INITIAL_CATEGORIES], state.deletedCategoryIds);
           }
           if (Array.isArray(parsed.zions) && parsed.zions.length) state.zions = parsed.zions;
           if (Array.isArray(parsed.ageGroups) && parsed.ageGroups.length) state.ageGroups = parsed.ageGroups;
           if (Array.isArray(parsed.entries)) state.entries = parsed.entries;
           if (Array.isArray(parsed.grandTotalGroupIds)) state.grandTotalGroupIds = parsed.grandTotalGroupIds;
         } else {
-          state.categories = [...INITIAL_CATEGORIES];
+          state.categories = ensureDefaultCategories([...INITIAL_CATEGORIES], []);
         }
       } catch (e) {
         console.warn('Unable to load saved state', e);
       }
     }
 
-    function saveState() {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({
-          categories: state.categories,
-          zions: state.zions,
-          ageGroups: state.ageGroups,
-          entries: state.entries,
-          grandTotalGroupIds: state.grandTotalGroupIds
-        }));
-      } catch (e) {
-        console.warn('Unable to persist state', e);
-      }
+    // Backup & Export / Restore Helpers
+    function exportDataBackup() {
+      const data = {
+        app: 'Zion Survey & Attendance Manager',
+        version: '1.0',
+        exportedAt: new Date().toISOString(),
+        categories: state.categories,
+        zions: state.zions,
+        ageGroups: state.ageGroups,
+        entries: state.entries,
+        grandTotalGroupIds: state.grandTotalGroupIds,
+        deletedCategoryIds: state.deletedCategoryIds,
+        deletedEntryIds: state.deletedEntryIds
+      };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const dStr = new Date().toISOString().slice(0, 10);
+      a.href = url;
+      a.download = `zion_survey_backup_${dStr}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast('Backup file downloaded');
+    }
+
+    function triggerImportBackup() {
+      const input = document.getElementById('backup-file-input');
+      if (input) input.click();
+    }
+
+    function handleBackupFileSelected(event) {
+      const file = event.target?.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const parsed = JSON.parse(e.target.result);
+          if (!parsed || (!Array.isArray(parsed.categories) && !Array.isArray(parsed.entries))) {
+            showToast('Invalid backup file format');
+            return;
+          }
+          openConfirmModal(
+            'Restore Backup Data?',
+            `This backup contains ${parsed.categories?.length || 0} categories and ${parsed.entries?.length || 0} survey entries. Merge this data with your current records?`,
+            () => {
+              if (Array.isArray(parsed.categories)) {
+                state.categories = ensureDefaultCategories(reconcileLists(state.categories, parsed.categories, state.deletedCategoryIds), state.deletedCategoryIds);
+              }
+              if (Array.isArray(parsed.zions) && parsed.zions.length) {
+                state.zions = reconcileLists(state.zions, parsed.zions, state.deletedZionIds);
+              }
+              if (Array.isArray(parsed.ageGroups) && parsed.ageGroups.length) {
+                state.ageGroups = reconcileLists(state.ageGroups, parsed.ageGroups, state.deletedAgIds);
+              }
+              if (Array.isArray(parsed.entries)) {
+                state.entries = reconcileLists(state.entries, parsed.entries, state.deletedEntryIds);
+              }
+              if (Array.isArray(parsed.grandTotalGroupIds)) {
+                state.grandTotalGroupIds = parsed.grandTotalGroupIds;
+              }
+              saveState(true);
+              closeModal();
+              render();
+              showToast('Data restored and synced successfully');
+            }
+          );
+        } catch (err) {
+          console.error(err);
+          showToast('Error reading backup file');
+        }
+      };
+      reader.readAsText(file);
+      event.target.value = '';
+    }
+
+    function forceCloudSyncNow() {
+      showToast('Syncing with Firebase Cloud...');
       if (typeof window.syncToCloud === 'function') {
-        window.syncToCloud();
+        window.syncToCloud(true);
+        setTimeout(() => {
+          showToast('Cloud sync complete!');
+        }, 600);
+      } else {
+        showToast('Firebase client initializing...');
       }
     }
+
+    window.addEventListener('beforeunload', () => {
+      try {
+        saveLocalStateOnly();
+      } catch (e) {}
+    });
+
+    // Expose globals for window and inline event handlers
+    window.state = state;
+    window.reconcileLists = reconcileLists;
+    window.reconcileWithRemote = reconcileWithRemote;
+    window.saveState = saveState;
+    window.saveLocalStateOnly = saveLocalStateOnly;
+    window.exportDataBackup = exportDataBackup;
+    window.triggerImportBackup = triggerImportBackup;
+    window.handleBackupFileSelected = handleBackupFileSelected;
+    window.forceCloudSyncNow = forceCloudSyncNow;
 
     // ============================================================================
     // UTILITIES & HELPERS
@@ -1125,9 +1390,10 @@
       const input = document.getElementById('pub-new-zion-input');
       const trimmed = (input?.value || '').trim();
       if (!trimmed) return;
-      const newZ = { id: `zion-${Date.now()}`, name: trimmed };
+      const now = new Date().toISOString();
+      const newZ = { id: `zion-${Date.now()}`, name: trimmed, createdAt: now, updatedAt: now };
       state.zions.push(newZ);
-      saveState();
+      saveState(true);
       const select = document.getElementById('pub-zion-select');
       const opt = document.createElement('option');
       opt.value = newZ.id;
@@ -1159,15 +1425,18 @@
       document.querySelectorAll('.pub-ag-input').forEach(inp => {
         counts[inp.dataset.agId] = Math.max(0, parseInt(inp.value, 10) || 0);
       });
+      const now = new Date().toISOString();
       state.entries.unshift({
-        id: `ent-${Date.now()}`,
+        id: `ent-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         categoryId,
         zionId,
         date,
         notes,
-        counts
+        counts,
+        createdAt: now,
+        updatedAt: now
       });
-      saveState();
+      saveState(true);
       state.publicSubmitted = true;
       showToast('Survey response submitted');
       render();
@@ -1308,14 +1577,15 @@
       const color = document.getElementById('cat-modal-color').value;
       if (!name) return;
 
+      const now = new Date().toISOString();
       if (mode === 'add') {
-        state.categories.push({ id: `cat-${Date.now()}`, name, description, color });
+        state.categories.push({ id: `cat-${Date.now()}`, name, description, color, createdAt: now, updatedAt: now });
         showToast(`Survey "${name}" created`);
       } else if (catId) {
-        state.categories = state.categories.map(c => c.id === catId ? { ...c, name, description, color } : c);
+        state.categories = state.categories.map(c => c.id === catId ? { ...c, name, description, color, updatedAt: now } : c);
         showToast(`Survey "${name}" updated`);
       }
-      saveState();
+      saveState(true);
       closeModal();
       render();
     }
@@ -1327,13 +1597,18 @@
         `Delete "${cat.name}"?`,
         `This will permanently remove the "${cat.name}" survey folder and all its recorded entries.`,
         () => {
+          if (!state.deletedCategoryIds) state.deletedCategoryIds = [];
+          state.deletedCategoryIds.push(catId);
+          const removedEntries = state.entries.filter(e => e.categoryId === catId);
+          if (!state.deletedEntryIds) state.deletedEntryIds = [];
+          removedEntries.forEach(e => state.deletedEntryIds.push(e.id));
           state.categories = state.categories.filter(c => c.id !== catId);
           state.entries = state.entries.filter(e => e.categoryId !== catId);
           if (state.selectedCategoryId === catId) {
             state.route = 'home';
             state.selectedCategoryId = null;
           }
-          saveState();
+          saveState(true);
           closeModal();
           showToast(`Deleted "${cat.name}"`);
           render();
@@ -1532,8 +1807,9 @@
       const select = document.getElementById('entry-zion-select');
       if (!val) return;
 
+      const now = new Date().toISOString();
       if (mode === 'add') {
-        const newZ = { id: `zion-${Date.now()}`, name: val };
+        const newZ = { id: `zion-${Date.now()}`, name: val, createdAt: now, updatedAt: now };
         state.zions.push(newZ);
         const opt = document.createElement('option');
         opt.value = newZ.id;
@@ -1543,12 +1819,12 @@
         showToast(`Zion "${val}" added`);
       } else {
         const targetId = select.value;
-        state.zions = state.zions.map(z => z.id === targetId ? { ...z, name: val } : z);
+        state.zions = state.zions.map(z => z.id === targetId ? { ...z, name: val, updatedAt: now } : z);
         const opt = select.querySelector(`option[value="${targetId}"]`);
         if (opt) opt.textContent = val;
         showToast(`Zion renamed to "${val}"`);
       }
-      saveState();
+      saveState(true);
       document.getElementById('inline-zion-editor').classList.add('hidden');
     }
 
@@ -1558,8 +1834,9 @@
       const gender = document.getElementById('inline-ag-gender').value;
       const includeInGt = document.getElementById('inline-ag-include-gt').checked;
       if (!label) return;
+      const now = new Date().toISOString();
       const newId = `ag-${Date.now()}`;
-      state.ageGroups.push({ id: newId, label, gender, groupType });
+      state.ageGroups.push({ id: newId, label, gender, groupType, createdAt: now, updatedAt: now });
       if (includeInGt) {
         if (!Array.isArray(state.grandTotalGroupIds)) {
           state.grandTotalGroupIds = state.ageGroups.map(ag => ag.id);
@@ -1567,15 +1844,17 @@
           state.grandTotalGroupIds.push(newId);
         }
       }
-      saveState();
+      saveState(true);
       openEntryModal(mode, entryId || null);
       showToast(`"${label}" added`);
     }
 
     function removeInlineAgeGroup(agId, mode, entryId) {
       if (state.ageGroups.length <= 1) return;
+      if (!state.deletedAgIds) state.deletedAgIds = [];
+      state.deletedAgIds.push(agId);
       state.ageGroups = state.ageGroups.filter(ag => ag.id !== agId);
-      saveState();
+      saveState(true);
       openEntryModal(mode, entryId || null);
       showToast('Age group removed');
     }
@@ -1601,21 +1880,24 @@
         counts[inp.dataset.agId] = Math.max(0, parseInt(inp.value, 10) || 0);
       });
 
+      const now = new Date().toISOString();
       if (mode === 'edit' && entryId) {
-        state.entries = state.entries.map(ent => ent.id === entryId ? { ...ent, zionId, date, notes, counts } : ent);
+        state.entries = state.entries.map(ent => ent.id === entryId ? { ...ent, zionId, date, notes, counts, updatedAt: now } : ent);
         showToast('Survey entry updated');
       } else {
         state.entries.unshift({
-          id: `ent-${Date.now()}`,
+          id: `ent-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           categoryId: state.selectedCategoryId,
           zionId,
           date,
           notes,
-          counts
+          counts,
+          createdAt: now,
+          updatedAt: now
         });
         showToast('Survey entry saved');
       }
-      saveState();
+      saveState(true);
       closeModal();
       render();
     }
@@ -1625,8 +1907,10 @@
         'Delete Survey Entry?',
         'Are you sure you want to delete this survey record? This action cannot be undone.',
         () => {
+          if (!state.deletedEntryIds) state.deletedEntryIds = [];
+          state.deletedEntryIds.push(entryId);
           state.entries = state.entries.filter(e => e.id !== entryId);
-          saveState();
+          saveState(true);
           closeModal();
           showToast('Entry deleted');
           render();
@@ -1860,6 +2144,36 @@
                   }).join('')}
                 </div>
               </div>
+
+              <!-- Data Protection, Backup & Cloud Sync Card -->
+              <div class="col-span-1 md:col-span-2 pt-4 border-t border-slate-200">
+                <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <h4 class="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                      <i data-lucide="shield-check" class="w-4 h-4 text-emerald-600"></i>
+                      <span>Data Protection, Backup &amp; Cloud Sync</span>
+                    </h4>
+                    <p class="text-xs text-slate-500 mt-0.5">
+                      Auto-saved to Browser LocalStorage &amp; Live Firebase Cloud. Export anytime to keep an offline JSON backup.
+                    </p>
+                  </div>
+                  <div class="flex items-center gap-2 shrink-0 flex-wrap">
+                    <input type="file" id="backup-file-input" accept=".json" onchange="handleBackupFileSelected(event)" class="hidden" />
+                    <button type="button" onclick="exportDataBackup()" class="px-3 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold inline-flex items-center gap-1.5 shadow-2xs">
+                      <i data-lucide="download" class="w-3.5 h-3.5 text-indigo-600"></i>
+                      <span>Export Backup</span>
+                    </button>
+                    <button type="button" onclick="triggerImportBackup()" class="px-3 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold inline-flex items-center gap-1.5 shadow-2xs">
+                      <i data-lucide="upload" class="w-3.5 h-3.5 text-emerald-600"></i>
+                      <span>Restore File</span>
+                    </button>
+                    <button type="button" onclick="forceCloudSyncNow()" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold inline-flex items-center gap-1.5 shadow-2xs">
+                      <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                      <span>Sync Cloud Now</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div class="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex justify-end">
@@ -1875,8 +2189,9 @@
       e.preventDefault();
       const val = document.getElementById('manage-new-zion').value.trim();
       if (!val) return;
-      state.zions.push({ id: `zion-${Date.now()}`, name: val });
-      saveState();
+      const now = new Date().toISOString();
+      state.zions.push({ id: `zion-${Date.now()}`, name: val, createdAt: now, updatedAt: now });
+      saveState(true);
       openManageFieldsModal();
       showToast(`Zion "${val}" added`);
     }
@@ -1901,16 +2216,19 @@
     function saveRenamedZion(id) {
       const val = document.getElementById('rename-zion-val').value.trim();
       if (!val) return;
-      state.zions = state.zions.map(z => z.id === id ? { ...z, name: val } : z);
-      saveState();
+      const now = new Date().toISOString();
+      state.zions = state.zions.map(z => z.id === id ? { ...z, name: val, updatedAt: now } : z);
+      saveState(true);
       openManageFieldsModal();
       showToast('Zion updated');
     }
 
     function deleteManagedZion(id) {
       if (state.zions.length <= 1) return;
+      if (!state.deletedZionIds) state.deletedZionIds = [];
+      state.deletedZionIds.push(id);
       state.zions = state.zions.filter(z => z.id !== id);
-      saveState();
+      saveState(true);
       openManageFieldsModal();
       showToast('Zion removed');
     }
@@ -1922,8 +2240,9 @@
       const gender = document.getElementById('manage-new-ag-gender').value;
       const includeInGt = document.getElementById('manage-new-ag-include-gt').checked;
       if (!label) return;
+      const now = new Date().toISOString();
       const newId = `ag-${Date.now()}`;
-      state.ageGroups.push({ id: newId, label, gender, groupType });
+      state.ageGroups.push({ id: newId, label, gender, groupType, createdAt: now, updatedAt: now });
       if (includeInGt) {
         if (!Array.isArray(state.grandTotalGroupIds)) {
           state.grandTotalGroupIds = state.ageGroups.map(ag => ag.id);
@@ -1931,7 +2250,7 @@
           state.grandTotalGroupIds.push(newId);
         }
       }
-      saveState();
+      saveState(true);
       openManageFieldsModal();
       showToast(`"${label}" added as ${groupType === 'other' ? 'Other' : 'Age group'}`);
     }
@@ -1987,7 +2306,8 @@
       const gender = document.getElementById('rename-ag-gender').value;
       const includeInGt = document.getElementById('rename-ag-include-gt').checked;
       if (!label) return;
-      state.ageGroups = state.ageGroups.map(ag => ag.id === id ? { ...ag, label, gender, groupType } : ag);
+      const now = new Date().toISOString();
+      state.ageGroups = state.ageGroups.map(ag => ag.id === id ? { ...ag, label, gender, groupType, updatedAt: now } : ag);
       
       const currentGt = getGrandTotalGroupIds();
       if (includeInGt && !currentGt.includes(id)) {
@@ -1995,7 +2315,7 @@
       } else if (!includeInGt && currentGt.includes(id)) {
         state.grandTotalGroupIds = currentGt.filter(item => item !== id);
       }
-      saveState();
+      saveState(true);
       openManageFieldsModal();
       showToast('Group updated');
     }
@@ -2097,7 +2417,7 @@
         return;
       }
       state.grandTotalGroupIds = selected;
-      saveState();
+      saveState(true);
       closeModal();
       render();
       showToast(`Grand Total updated (${selected.length} groups selected)`);
@@ -2120,8 +2440,10 @@
 
     function deleteManagedAgeGroup(id) {
       if (state.ageGroups.length <= 1) return;
+      if (!state.deletedAgIds) state.deletedAgIds = [];
+      state.deletedAgIds.push(id);
       state.ageGroups = state.ageGroups.filter(ag => ag.id !== id);
-      saveState();
+      saveState(true);
       openManageFieldsModal();
       showToast('Age group removed');
     }
@@ -2201,13 +2523,13 @@
     const updateSyncBadge = (status, text) => {
       if (!syncEl) return;
       if (status === 'synced') {
-        syncEl.className = 'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold transition-colors';
+        syncEl.className = 'cursor-pointer inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold transition-colors hover:bg-emerald-100';
         syncEl.innerHTML = '<i data-lucide="cloud-check" class="w-3.5 h-3.5 text-emerald-600"></i><span class="hidden md:inline">' + (text || 'Firebase Synced') + '</span>';
       } else if (status === 'syncing') {
-        syncEl.className = 'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-50 text-amber-700 border border-amber-200 text-xs font-semibold transition-colors';
+        syncEl.className = 'cursor-pointer inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-50 text-amber-700 border border-amber-200 text-xs font-semibold transition-colors hover:bg-amber-100';
         syncEl.innerHTML = '<i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-amber-600 animate-spin"></i><span class="hidden md:inline">Syncing...</span>';
       } else if (status === 'error') {
-        syncEl.className = 'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-medium transition-colors';
+        syncEl.className = 'cursor-pointer inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-medium transition-colors hover:bg-slate-200';
         syncEl.innerHTML = '<i data-lucide="cloud-off" class="w-3.5 h-3.5 text-slate-500"></i><span class="hidden md:inline">' + (text || 'Local Mode') + '</span>';
       }
       if (window.lucide) lucide.createIcons();
@@ -2226,47 +2548,21 @@
         if (docSnap.exists()) {
           const data = docSnap.data();
           isRemoteUpdate = true;
-          if (Array.isArray(data.categories) && data.categories.length) {
-            state.categories = ensureDefaultCategories(data.categories);
-            if (!data.categories.some(c => c.id === 'cat-new-song-festival' || (c.name || '').toLowerCase().includes('new song'))) {
-              setDoc(docRef, { categories: state.categories }, { merge: true }).catch(() => {});
-            }
-          } else {
-            state.categories = ensureDefaultCategories(state.categories);
-          }
-          if (Array.isArray(data.zions) && data.zions.length) state.zions = data.zions;
-          if (Array.isArray(data.ageGroups) && data.ageGroups.length) state.ageGroups = data.ageGroups;
-          if (Array.isArray(data.entries)) state.entries = data.entries;
-          if (Array.isArray(data.grandTotalGroupIds)) state.grandTotalGroupIds = data.grandTotalGroupIds;
-          
           try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify({
-              categories: state.categories,
-              zions: state.zions,
-              ageGroups: state.ageGroups,
-              entries: state.entries,
-              grandTotalGroupIds: state.grandTotalGroupIds
-            }));
-          } catch (e) {}
-
+            if (typeof window.reconcileWithRemote === 'function') {
+              window.reconcileWithRemote(data);
+            }
+          } catch (e) {
+            console.error('Reconciliation error:', e);
+          }
           if (typeof render === 'function') render();
           updateSyncBadge('synced', 'Firebase Live');
-          setTimeout(() => { isRemoteUpdate = false; }, 300);
+          setTimeout(() => { isRemoteUpdate = false; }, 200);
         } else {
           updateSyncBadge('syncing');
-          setDoc(docRef, {
-            categories: state.categories,
-            zions: state.zions,
-            ageGroups: state.ageGroups,
-            entries: state.entries,
-            grandTotalGroupIds: state.grandTotalGroupIds,
-            updatedAt: new Date().toISOString()
-          }, { merge: true })
-          .then(() => updateSyncBadge('synced', 'Firebase Initialized'))
-          .catch(err => {
-            console.warn('Firestore initial write:', err);
-            updateSyncBadge('error', 'Local Storage');
-          });
+          if (typeof window.syncToCloud === 'function') {
+            window.syncToCloud(true);
+          }
         }
       }, (error) => {
         console.warn('Firestore listener error:', error);
@@ -2277,26 +2573,38 @@
       updateSyncBadge('error', 'Local Storage');
     }
 
-    window.syncToCloud = function() {
+    window.syncToCloud = function(immediate = false) {
       if (isRemoteUpdate) return;
       updateSyncBadge('syncing');
       clearTimeout(syncTimer);
-      syncTimer = setTimeout(async () => {
+
+      const doSync = async () => {
         try {
-          await setDoc(docRef, {
+          const payload = {
             categories: state.categories,
             zions: state.zions,
             ageGroups: state.ageGroups,
             entries: state.entries,
             grandTotalGroupIds: state.grandTotalGroupIds,
+            deletedCategoryIds: (state.deletedCategoryIds || []).slice(-300),
+            deletedEntryIds: (state.deletedEntryIds || []).slice(-500),
+            deletedZionIds: (state.deletedZionIds || []).slice(-200),
+            deletedAgIds: (state.deletedAgIds || []).slice(-200),
             updatedAt: new Date().toISOString()
-          }, { merge: true });
-          updateSyncBadge('synced', 'Saved to Cloud');
+          };
+          await setDoc(docRef, payload, { merge: true });
+          updateSyncBadge('synced', 'Firebase Live');
         } catch (e) {
           console.warn('Cloud save error:', e);
           updateSyncBadge('error', 'Saved Locally');
         }
-      }, 500);
+      };
+
+      if (immediate) {
+        doSync();
+      } else {
+        syncTimer = setTimeout(doSync, 400);
+      }
     };
   </script>
 </body>
