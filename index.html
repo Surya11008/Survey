@@ -222,10 +222,15 @@
       deletedZionIds: [],
       deletedAgIds: [],
       route: 'home', // 'home' | 'category' | 'public'
-      homeView: 'grid', // 'grid' | 'list'
+      homeView: 'grid', // 'grid' | 'list' | 'calendar'
       isAdmin: false,
       selectedCategoryId: null,
-      activeTab: 'records', // 'records' | 'zionSummary'
+      activeTab: 'records', // 'records' | 'zionSummary' | 'calendar'
+      calendarYear: new Date().getFullYear(),
+      calendarMonth: new Date().getMonth(),
+      calendarSelectedDate: getTodayISO(),
+      calendarCategoryFilter: 'all',
+      calendarZionFilter: 'all',
       filters: {
         zion: 'all',
         dateFrom: '',
@@ -244,11 +249,66 @@
     }
 
     function setHomeView(view) {
-      state.homeView = view === 'list' ? 'list' : 'grid';
+      state.homeView = (view === 'list' || view === 'calendar') ? view : 'grid';
       try {
         localStorage.setItem('zion_survey_home_view', state.homeView);
       } catch (e) {}
       render();
+    }
+
+    function changeCalendarMonth(delta) {
+      let m = state.calendarMonth + delta;
+      let y = state.calendarYear;
+      if (m < 0) {
+        m = 11;
+        y--;
+      } else if (m > 11) {
+        m = 0;
+        y++;
+      }
+      state.calendarMonth = m;
+      state.calendarYear = y;
+      render();
+    }
+
+    function setCalendarToday() {
+      const now = new Date();
+      state.calendarYear = now.getFullYear();
+      state.calendarMonth = now.getMonth();
+      state.calendarSelectedDate = getTodayISO();
+      render();
+    }
+
+    function selectCalendarDate(dateStr) {
+      state.calendarSelectedDate = dateStr;
+      render();
+    }
+
+    function setCalendarCategoryFilter(catId) {
+      state.calendarCategoryFilter = catId;
+      render();
+    }
+
+    function setCalendarZionFilter(zionId) {
+      state.calendarZionFilter = zionId;
+      render();
+    }
+
+    function handleCalendarEditEntry(entryId, catId) {
+      if (!checkAdminPermission('edit this entry')) return;
+      state.selectedCategoryId = catId;
+      openEntryModal('edit', entryId);
+    }
+
+    function openCalendarAddEntryModal(dateStr, catId = null) {
+      if (!checkAdminPermission('add an entry')) return;
+      const targetCatId = catId || (state.selectedCategoryId || (state.calendarCategoryFilter !== 'all' ? state.calendarCategoryFilter : (state.categories[0]?.id || null)));
+      if (!targetCatId) {
+        showToast('Please create a survey first', 'error');
+        return;
+      }
+      state.selectedCategoryId = targetCatId;
+      openEntryModal('add', null, dateStr);
     }
 
     function getGroupType(ag) {
@@ -441,7 +501,7 @@
 
         try {
           const savedView = localStorage.getItem('zion_survey_home_view');
-          if (savedView === 'list' || savedView === 'grid') {
+          if (savedView === 'list' || savedView === 'grid' || savedView === 'calendar') {
             state.homeView = savedView;
           }
           const savedAdmin = localStorage.getItem(ADMIN_SESSION_KEY);
@@ -848,6 +908,436 @@
       `;
     }
 
+    function renderHomeCalendarTracker() {
+      let filtered = state.entries;
+      if (state.calendarCategoryFilter !== 'all') {
+        filtered = filtered.filter(e => e.categoryId === state.calendarCategoryFilter);
+      }
+      if (state.calendarZionFilter !== 'all') {
+        filtered = filtered.filter(e => e.zionId === state.calendarZionFilter);
+      }
+      return renderCalendarTracker(filtered, 'all', { isHome: true });
+    }
+
+    function renderCalendarTracker(entries, categoryId, opts = {}) {
+      const isHome = opts.isHome === true;
+      const category = opts.category || state.categories.find(c => c.id === categoryId);
+
+      const monthNames = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'
+      ];
+      const curYear = state.calendarYear;
+      const curMonth = state.calendarMonth;
+      const monthLabel = `${monthNames[curMonth]} ${curYear}`;
+
+      // Month boundaries
+      const firstDayOfMonth = new Date(curYear, curMonth, 1).getDay(); // 0 is Sunday
+      const daysInMonth = new Date(curYear, curMonth + 1, 0).getDate();
+      const daysInPrevMonth = new Date(curYear, curMonth, 0).getDate();
+
+      // Build map of entries by date: dateStr -> Array<entry>
+      const entriesByDate = {};
+      let monthTotalAttendance = 0;
+      let monthMaleTotal = 0;
+      let monthFemaleTotal = 0;
+      const activeDaysSet = new Set();
+      let peakDay = null;
+      let peakDayTotal = -1;
+
+      // Filter entries for this month stats
+      const monthPrefix = `${curYear}-${String(curMonth + 1).padStart(2, '0')}`;
+
+      entries.forEach(entry => {
+        if (!entriesByDate[entry.date]) {
+          entriesByDate[entry.date] = [];
+        }
+        entriesByDate[entry.date].push(entry);
+
+        if (entry.date.startsWith(monthPrefix)) {
+          const stats = getEntryGenderStats(entry);
+          monthTotalAttendance += stats.grandTotal;
+          monthMaleTotal += stats.maleTotal;
+          monthFemaleTotal += stats.femaleTotal;
+          activeDaysSet.add(entry.date);
+        }
+      });
+
+      // Calculate peak day
+      activeDaysSet.forEach(dStr => {
+        const dayEntries = entriesByDate[dStr] || [];
+        const dayTotal = dayEntries.reduce((acc, e) => acc + getEntryGenderStats(e).grandTotal, 0);
+        if (dayTotal > peakDayTotal) {
+          peakDayTotal = dayTotal;
+          peakDay = dStr;
+        }
+      });
+
+      const activeDaysCount = activeDaysSet.size;
+      const dailyAverage = activeDaysCount > 0 ? Math.round(monthTotalAttendance / activeDaysCount) : 0;
+
+      // Selected Date calculation
+      const selectedDate = state.calendarSelectedDate || getTodayISO();
+      const selectedDayEntries = entriesByDate[selectedDate] || [];
+      let selTotal = 0, selMale = 0, selFemale = 0;
+      const selZionsSet = new Set();
+      selectedDayEntries.forEach(e => {
+        const s = getEntryGenderStats(e);
+        selTotal += s.grandTotal;
+        selMale += s.maleTotal;
+        selFemale += s.femaleTotal;
+        selZionsSet.add(e.zionId);
+      });
+
+      let formattedSelectedDate = selectedDate;
+      try {
+        const [y, m, d] = selectedDate.split('-').map(Number);
+        const selObj = new Date(y, m - 1, d);
+        formattedSelectedDate = selObj.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+      } catch (e) {}
+
+      // Generate Calendar Grid
+      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      let cellsHtml = '';
+
+      // 1. Previous month trailing days
+      for (let i = firstDayOfMonth - 1; i >= 0; i--) {
+        const d = daysInPrevMonth - i;
+        const prevMonthNum = curMonth === 0 ? 12 : curMonth;
+        const prevYearNum = curMonth === 0 ? curYear - 1 : curYear;
+        const pDateStr = `${prevYearNum}-${String(prevMonthNum).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        cellsHtml += `
+          <div onclick="selectCalendarDate('${pDateStr}')" class="min-h-[75px] sm:min-h-[92px] p-2 bg-slate-50/40 rounded-xl border border-slate-100 flex flex-col justify-between opacity-40 hover:opacity-75 cursor-pointer transition-all">
+            <span class="text-xs font-semibold text-slate-400">${d}</span>
+            <span class="text-[10px] text-slate-300"></span>
+          </div>
+        `;
+      }
+
+      // 2. Current month days
+      const todayIso = getTodayISO();
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dateIso = `${curYear}-${String(curMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const isToday = dateIso === todayIso;
+        const isSelected = dateIso === selectedDate;
+        const dayEntries = entriesByDate[dateIso] || [];
+        const dayTotal = dayEntries.reduce((acc, e) => acc + getEntryGenderStats(e).grandTotal, 0);
+        const dayZionCount = new Set(dayEntries.map(e => e.zionId)).size;
+
+        cellsHtml += `
+          <div onclick="selectCalendarDate('${dateIso}')" class="min-h-[75px] sm:min-h-[92px] p-2 sm:p-2.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between relative group ${
+            isSelected
+              ? 'bg-indigo-50/80 border-indigo-400 ring-2 ring-indigo-500 shadow-xs'
+              : (isToday
+                  ? 'bg-sky-50/50 border-sky-300 hover:border-indigo-300 hover:bg-white'
+                  : (dayTotal > 0
+                      ? 'bg-white border-slate-200 hover:border-indigo-300 hover:shadow-xs'
+                      : 'bg-white/70 border-slate-200/80 hover:border-slate-300 hover:bg-white'))
+          }">
+            <div class="flex items-center justify-between">
+              <span class="text-xs sm:text-sm font-bold ${isSelected ? 'text-indigo-900' : (isToday ? 'text-sky-700 font-extrabold' : 'text-slate-700')}">
+                ${d}
+              </span>
+              ${isToday ? `<span class="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-sky-600 text-white uppercase tracking-tight">Today</span>` : ''}
+            </div>
+
+            ${dayTotal > 0 ? `
+              <div class="mt-1 space-y-1">
+                <div class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] sm:text-xs font-bold w-full justify-between">
+                  <span class="flex items-center gap-0.5"><i data-lucide="users" class="w-3 h-3 text-emerald-600"></i> ${dayTotal.toLocaleString()}</span>
+                  <span class="text-[9px] text-emerald-700/80 hidden sm:inline">${dayEntries.length} ${dayEntries.length === 1 ? 'rec' : 'recs'}</span>
+                </div>
+                <div class="text-[9px] text-slate-500 truncate hidden sm:block">
+                  ${dayZionCount} ${dayZionCount === 1 ? 'Zion' : 'Zions'}
+                </div>
+              </div>
+            ` : `
+              <div class="mt-auto text-[10px] text-slate-300 group-hover:text-slate-400 text-center sm:text-left transition-colors">
+                —
+              </div>
+            `}
+          </div>
+        `;
+      }
+
+      // 3. Next month trailing padding
+      const totalCells = firstDayOfMonth + daysInMonth;
+      const nextMonthCells = (7 - (totalCells % 7)) % 7;
+      for (let d = 1; d <= nextMonthCells; d++) {
+        const nextMonthNum = curMonth === 11 ? 1 : curMonth + 2;
+        const nextYearNum = curMonth === 11 ? curYear + 1 : curYear;
+        const nDateStr = `${nextYearNum}-${String(nextMonthNum).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        cellsHtml += `
+          <div onclick="selectCalendarDate('${nDateStr}')" class="min-h-[75px] sm:min-h-[92px] p-2 bg-slate-50/40 rounded-xl border border-slate-100 flex flex-col justify-between opacity-40 hover:opacity-75 cursor-pointer transition-all">
+            <span class="text-xs font-semibold text-slate-400">${d}</span>
+            <span class="text-[10px] text-slate-300"></span>
+          </div>
+        `;
+      }
+
+      return `
+        <div class="space-y-6">
+          <!-- Calendar Tracker Header & Controls Card -->
+          <div class="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/90 shadow-xs space-y-5">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <div class="flex items-center gap-2">
+                  <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                    <i data-lucide="calendar" class="w-3.5 h-3.5 inline mr-1"></i>Attendance Calendar
+                  </span>
+                  ${isHome ? `
+                    <span class="text-xs font-semibold text-slate-500">All Surveys Tracker</span>
+                  ` : `
+                    <span class="text-xs font-semibold text-slate-600">${escapeHtml(category?.name || '')}</span>
+                  `}
+                </div>
+                <h3 class="text-xl sm:text-2xl font-extrabold text-slate-900 mt-1 flex items-center gap-2">
+                  <span>${monthLabel}</span>
+                </h3>
+              </div>
+
+              <!-- Month Navigation Buttons -->
+              <div class="flex items-center gap-2 flex-wrap">
+                <button type="button" onclick="changeCalendarMonth(-1)" class="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs sm:text-sm font-semibold transition-colors cursor-pointer">
+                  <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                  <span>Prev</span>
+                </button>
+                <button type="button" onclick="setCalendarToday()" class="inline-flex items-center gap-1 px-3.5 py-2 rounded-xl border border-indigo-200 bg-indigo-50/80 hover:bg-indigo-100 text-indigo-700 text-xs sm:text-sm font-semibold transition-colors cursor-pointer">
+                  <i data-lucide="calendar-check-2" class="w-4 h-4"></i>
+                  <span>Today</span>
+                </button>
+                <button type="button" onclick="changeCalendarMonth(1)" class="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs sm:text-sm font-semibold transition-colors cursor-pointer">
+                  <span>Next</span>
+                  <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- Optional Home Filter Controls -->
+            ${isHome ? `
+              <div class="pt-3 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div>
+                  <label class="block text-[11px] font-semibold text-slate-500 mb-1">Filter by Survey Folder</label>
+                  <select onchange="setCalendarCategoryFilter(this.value)" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium text-slate-800">
+                    <option value="all" ${state.calendarCategoryFilter === 'all' ? 'selected' : ''}>All Surveys (${state.categories.length})</option>
+                    ${state.categories.map(c => `<option value="${c.id}" ${state.calendarCategoryFilter === c.id ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}
+                  </select>
+                </div>
+
+                <div>
+                  <label class="block text-[11px] font-semibold text-slate-500 mb-1">Filter by Zion Location</label>
+                  <select onchange="setCalendarZionFilter(this.value)" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium text-slate-800">
+                    <option value="all" ${state.calendarZionFilter === 'all' ? 'selected' : ''}>All Zions (${state.zions.length})</option>
+                    ${state.zions.map(z => `<option value="${z.id}" ${state.calendarZionFilter === z.id ? 'selected' : ''}>${escapeHtml(z.name)}</option>`).join('')}
+                  </select>
+                </div>
+
+                <div class="sm:col-span-2 lg:col-span-1 flex items-end">
+                  <div class="text-xs text-slate-500 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200 w-full flex items-center justify-between">
+                    <span>Active month entries:</span>
+                    <strong class="text-slate-800">${entries.filter(e => e.date.startsWith(monthPrefix)).length}</strong>
+                  </div>
+                </div>
+              </div>
+            ` : `
+              <div class="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                <span>Displaying calendar for <strong>${escapeHtml(category?.name || 'Current Survey')}</strong></span>
+                <span class="text-indigo-600 font-semibold">${entries.filter(e => e.date.startsWith(monthPrefix)).length} records this month</span>
+              </div>
+            `}
+
+            <!-- Month Quick KPI Cards -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div class="bg-indigo-50/60 border border-indigo-100 rounded-xl p-3 sm:p-4">
+                <span class="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-indigo-700">Month Total</span>
+                <div class="mt-1 text-xl sm:text-2xl font-extrabold text-indigo-900 tabular-nums">
+                  ${monthTotalAttendance.toLocaleString()}
+                </div>
+                <div class="text-[10px] text-indigo-600 mt-0.5">
+                  M: ${monthMaleTotal} | F: ${monthFemaleTotal}
+                </div>
+              </div>
+
+              <div class="bg-emerald-50/60 border border-emerald-100 rounded-xl p-3 sm:p-4">
+                <span class="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-emerald-700">Active Days</span>
+                <div class="mt-1 text-xl sm:text-2xl font-extrabold text-emerald-900 tabular-nums">
+                  ${activeDaysCount}
+                </div>
+                <div class="text-[10px] text-emerald-600 mt-0.5">
+                  of ${daysInMonth} days
+                </div>
+              </div>
+
+              <div class="bg-sky-50/60 border border-sky-100 rounded-xl p-3 sm:p-4">
+                <span class="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-sky-700">Daily Average</span>
+                <div class="mt-1 text-xl sm:text-2xl font-extrabold text-sky-900 tabular-nums">
+                  ${dailyAverage.toLocaleString()}
+                </div>
+                <div class="text-[10px] text-sky-600 mt-0.5">
+                  per active day
+                </div>
+              </div>
+
+              <div class="bg-amber-50/60 border border-amber-100 rounded-xl p-3 sm:p-4">
+                <span class="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-amber-700">Peak Attendance</span>
+                <div class="mt-1 text-xl sm:text-2xl font-extrabold text-amber-900 tabular-nums">
+                  ${peakDayTotal > 0 ? peakDayTotal.toLocaleString() : '—'}
+                </div>
+                <div class="text-[10px] text-amber-600 mt-0.5 truncate" title="${peakDay || ''}">
+                  ${peakDay || 'No data'}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Calendar 7-Column Grid -->
+          <div class="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200/90 shadow-xs space-y-3">
+            <div class="grid grid-cols-7 gap-1 sm:gap-2 text-center">
+              ${dayNames.map((name, idx) => `
+                <div class="py-2 text-[11px] sm:text-xs font-bold uppercase tracking-wider ${idx === 0 ? 'text-rose-600' : (idx === 6 ? 'text-indigo-600' : 'text-slate-500')}">
+                  ${name}
+                </div>
+              `).join('')}
+            </div>
+
+            <div class="grid grid-cols-7 gap-1 sm:gap-2">
+              ${cellsHtml}
+            </div>
+          </div>
+
+          <!-- Selected Date Breakdown Drawer & Actions -->
+          <div class="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/90 shadow-xs space-y-5">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+              <div>
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-bold uppercase tracking-wider text-indigo-600 flex items-center gap-1">
+                    <i data-lucide="calendar-days" class="w-3.5 h-3.5"></i>
+                    <span>Selected Date</span>
+                  </span>
+                  ${selectedDate === todayIso ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-sky-100 text-sky-800">Today</span>` : ''}
+                </div>
+                <h4 class="text-lg sm:text-xl font-extrabold text-slate-900 mt-0.5">${formattedSelectedDate}</h4>
+              </div>
+
+              <div class="flex items-center gap-2">
+                ${state.isAdmin ? `
+                  <button type="button" onclick="openCalendarAddEntryModal('${selectedDate}', ${isHome ? 'null' : `'${categoryId}'`})" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-semibold shadow-xs transition-colors cursor-pointer">
+                    <i data-lucide="plus" class="w-4 h-4"></i>
+                    <span>+ Add Entry on this Date</span>
+                  </button>
+                ` : `
+                  <button type="button" onclick="openAdminLoginModal()" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs sm:text-sm font-semibold cursor-pointer">
+                    <i data-lucide="lock" class="w-3.5 h-3.5 text-amber-500"></i>
+                    <span>+ Add Entry (Admin)</span>
+                  </button>
+                `}
+              </div>
+            </div>
+
+            <!-- Selected Date Stats Strip -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div class="bg-slate-50 border border-slate-200/80 rounded-xl p-3">
+                <span class="text-[10px] font-bold uppercase text-slate-500">Day Total Attendance</span>
+                <div class="text-lg sm:text-xl font-extrabold text-indigo-700 mt-1 tabular-nums">${selTotal.toLocaleString()}</div>
+              </div>
+              <div class="bg-slate-50 border border-slate-200/80 rounded-xl p-3">
+                <span class="text-[10px] font-bold uppercase text-sky-600">Male Count</span>
+                <div class="text-lg sm:text-xl font-extrabold text-sky-800 mt-1 tabular-nums">${selMale.toLocaleString()}</div>
+              </div>
+              <div class="bg-slate-50 border border-slate-200/80 rounded-xl p-3">
+                <span class="text-[10px] font-bold uppercase text-rose-600">Female Count</span>
+                <div class="text-lg sm:text-xl font-extrabold text-rose-800 mt-1 tabular-nums">${selFemale.toLocaleString()}</div>
+              </div>
+              <div class="bg-slate-50 border border-slate-200/80 rounded-xl p-3">
+                <span class="text-[10px] font-bold uppercase text-emerald-600">Submitting Zions</span>
+                <div class="text-lg sm:text-xl font-extrabold text-emerald-800 mt-1 tabular-nums">${selZionsSet.size}</div>
+              </div>
+            </div>
+
+            <!-- Detailed Submissions List for Selected Date -->
+            <div class="space-y-3">
+              <h5 class="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center justify-between">
+                <span>Attendance Entries (${selectedDayEntries.length})</span>
+                <span class="text-[11px] font-medium text-slate-400">Click entry to edit or view</span>
+              </h5>
+
+              ${selectedDayEntries.length === 0 ? `
+                <div class="p-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                  <i data-lucide="calendar-x-2" class="w-8 h-8 text-slate-300 mx-auto mb-2"></i>
+                  <p class="text-xs font-semibold text-slate-600">No attendance records for ${formattedSelectedDate}</p>
+                  <p class="text-[11px] text-slate-400 mt-0.5 mb-3">Click below to record attendance for this date.</p>
+                  ${state.isAdmin ? `
+                    <button type="button" onclick="openCalendarAddEntryModal('${selectedDate}', ${isHome ? 'null' : `'${categoryId}'`})" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 cursor-pointer">
+                      <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                      <span>Record Attendance Now</span>
+                    </button>
+                  ` : ''}
+                </div>
+              ` : `
+                <div class="overflow-hidden border border-slate-200 rounded-xl">
+                  <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr class="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 text-[10px] uppercase">
+                          ${isHome ? '<th class="py-2.5 px-3">Survey</th>' : ''}
+                          <th class="py-2.5 px-3">Zion Location</th>
+                          <th class="py-2.5 px-3">Remarks / Session</th>
+                          <th class="py-2.5 px-3 text-right">Male</th>
+                          <th class="py-2.5 px-3 text-right">Female</th>
+                          <th class="py-2.5 px-3 text-right font-extrabold text-indigo-700 bg-indigo-50/50">Total</th>
+                          ${state.isAdmin ? '<th class="py-2.5 px-3 text-right">Actions</th>' : ''}
+                        </tr>
+                      </thead>
+                      <tbody class="divide-y divide-slate-100">
+                        ${selectedDayEntries.map(entry => {
+                          const catObj = state.categories.find(c => c.id === entry.categoryId);
+                          const zionObj = state.zions.find(z => z.id === entry.zionId);
+                          const stats = getEntryGenderStats(entry);
+                          return `
+                            <tr class="hover:bg-slate-50/80 transition-colors">
+                              ${isHome ? `
+                                <td class="py-2.5 px-3 whitespace-nowrap">
+                                  <button type="button" onclick="openCategory('${entry.categoryId}')" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 cursor-pointer">
+                                    <span>${escapeHtml(catObj?.name || 'Survey')}</span>
+                                    <i data-lucide="arrow-right" class="w-2.5 h-2.5"></i>
+                                  </button>
+                                </td>
+                              ` : ''}
+                              <td class="py-2.5 px-3 font-bold text-slate-900 whitespace-nowrap">
+                                ${escapeHtml(zionObj?.name || 'Unknown')}
+                              </td>
+                              <td class="py-2.5 px-3 text-slate-500 truncate max-w-[200px]">
+                                ${escapeHtml(entry.notes || '—')}
+                              </td>
+                              <td class="py-2.5 px-3 text-right tabular-nums text-sky-800 font-semibold">${stats.maleTotal}</td>
+                              <td class="py-2.5 px-3 text-right tabular-nums text-rose-800 font-semibold">${stats.femaleTotal}</td>
+                              <td class="py-2.5 px-3 text-right tabular-nums font-extrabold text-indigo-700 bg-indigo-50/30">${stats.grandTotal}</td>
+                              ${state.isAdmin ? `
+                                <td class="py-2.5 px-3 text-right whitespace-nowrap">
+                                  <div class="inline-flex items-center gap-1">
+                                    <button type="button" onclick="handleCalendarEditEntry('${entry.id}', '${entry.categoryId}')" title="Edit Entry" class="p-1 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-slate-100 cursor-pointer">
+                                      <i data-lucide="edit-2" class="w-3.5 h-3.5"></i>
+                                    </button>
+                                    <button type="button" onclick="confirmDeleteEntry('${entry.id}')" title="Delete Entry" class="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer">
+                                      <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                    </button>
+                                  </div>
+                                </td>
+                              ` : ''}
+                            </tr>
+                          `;
+                        }).join('')}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              `}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
     function renderHomeFolderView() {
       const cardsHtml = state.categories.length === 0
         ? `
@@ -983,15 +1473,19 @@
               </p>
             </div>
             <div class="flex items-center gap-2.5 shrink-0 flex-wrap">
-              <!-- View Switcher (Grid / List) -->
+              <!-- View Switcher (Grid / List / Calendar) -->
               <div class="inline-flex items-center p-1 bg-slate-100 rounded-xl border border-slate-200 shadow-2xs">
-                <button type="button" onclick="setHomeView('grid')" title="Grid View" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${state.homeView !== 'list' ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
+                <button type="button" onclick="setHomeView('grid')" title="Grid View" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${state.homeView === 'grid' ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
                   <i data-lucide="layout-grid" class="w-3.5 h-3.5"></i>
                   <span>Grid</span>
                 </button>
                 <button type="button" onclick="setHomeView('list')" title="List View" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${state.homeView === 'list' ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
                   <i data-lucide="list" class="w-3.5 h-3.5"></i>
                   <span>List</span>
+                </button>
+                <button type="button" onclick="setHomeView('calendar')" title="Calendar Tracker View" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${state.homeView === 'calendar' ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
+                  <i data-lucide="calendar" class="w-3.5 h-3.5"></i>
+                  <span>Calendar</span>
                 </button>
               </div>
 
@@ -1009,7 +1503,7 @@
             </div>
           </div>
 
-          ${state.homeView === 'list' ? renderHomeListView() : cardsHtml}
+          ${state.homeView === 'list' ? renderHomeListView() : (state.homeView === 'calendar' ? renderHomeCalendarTracker() : cardsHtml)}
         </div>
       `;
     }
@@ -1324,7 +1818,7 @@
           </div>
 
           <!-- View Switcher Tabs -->
-          <div class="flex items-center justify-between gap-3">
+          <div class="flex items-center justify-between gap-3 flex-wrap">
             <div class="inline-flex p-1 rounded-xl bg-slate-200/70">
               <button onclick="switchTab('records')" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all ${state.activeTab === 'records' ? 'bg-white text-indigo-600 shadow-2xs' : 'text-slate-600 hover:text-slate-900'}">
                 <i data-lucide="file-text" class="w-4 h-4"></i>
@@ -1334,6 +1828,10 @@
                 <i data-lucide="bar-chart-3" class="w-4 h-4"></i>
                 <span>Zion-wise Summary (${zionBreakdown.length})</span>
               </button>
+              <button onclick="switchTab('calendar')" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all ${state.activeTab === 'calendar' ? 'bg-white text-indigo-600 shadow-2xs' : 'text-slate-600 hover:text-slate-900'}">
+                <i data-lucide="calendar" class="w-4 h-4"></i>
+                <span>Calendar Tracker</span>
+              </button>
             </div>
 
             <button onclick="openManageFieldsModal()" class="text-xs font-semibold text-indigo-600 hover:text-indigo-800 hidden sm:inline-flex items-center gap-1">
@@ -1342,8 +1840,11 @@
             </button>
           </div>
 
-          <!-- Table Content -->
-          ${state.activeTab === 'records' ? renderRecordsTable(filteredEntries) : renderZionSummaryTable(zionBreakdown)}
+          <!-- Tab Content -->
+          ${state.activeTab === 'records'
+            ? renderRecordsTable(filteredEntries)
+            : (state.activeTab === 'zionSummary' ? renderZionSummaryTable(zionBreakdown) : renderCalendarTracker(filteredEntries, category.id, { isHome: false, category }))
+          }
         </div>
       `;
     }
@@ -1849,13 +2350,14 @@
     }
 
     // --- Modal 2: Add / Edit Survey Entry ---
-    function openEntryModal(mode, entryId = null) {
+    function openEntryModal(mode, entryId = null, prefillDate = null) {
       if (!checkAdminPermission(mode === 'add' ? 'add an attendance entry' : 'edit this entry')) return;
       const cat = state.categories.find(c => c.id === state.selectedCategoryId);
       const entry = entryId ? state.entries.find(e => e.id === entryId) : null;
       const selectedZion = entry?.zionId || (state.zions[0]?.id || '');
       const ageGroupList = state.ageGroups.filter(ag => getGroupType(ag) === 'age_group');
       const otherGroupList = state.ageGroups.filter(ag => getGroupType(ag) === 'other');
+      const entryDateVal = entry?.date || prefillDate || getTodayISO();
 
       document.getElementById('modal-root').innerHTML = `
         <div class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-xs overflow-y-auto">
@@ -1900,7 +2402,7 @@
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label class="block text-xs font-semibold text-slate-700 mb-1">Survey Date</label>
-                  <input id="entry-date" type="date" value="${entry?.date || getTodayISO()}" required class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800" />
+                  <input id="entry-date" type="date" value="${entryDateVal}" required class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800" />
                 </div>
                 <div>
                   <label class="block text-xs font-semibold text-slate-700 mb-1">Session / Remarks (Optional)</label>
@@ -2879,6 +3381,13 @@
     window.toggleAdminPasswordVisibility = toggleAdminPasswordVisibility;
     window.handleAdminLogout = handleAdminLogout;
     window.setHomeView = setHomeView;
+    window.changeCalendarMonth = changeCalendarMonth;
+    window.setCalendarToday = setCalendarToday;
+    window.selectCalendarDate = selectCalendarDate;
+    window.setCalendarCategoryFilter = setCalendarCategoryFilter;
+    window.setCalendarZionFilter = setCalendarZionFilter;
+    window.handleCalendarEditEntry = handleCalendarEditEntry;
+    window.openCalendarAddEntryModal = openCalendarAddEntryModal;
 
     // ============================================================================
     // BOOTSTRAP APPLICATION
