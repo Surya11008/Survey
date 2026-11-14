@@ -118,12 +118,12 @@
     ];
 
     const INITIAL_AGE_GROUPS = [
-      { id: 'ag-male-adult', label: 'Male Adult', gender: 'male' },
-      { id: 'ag-female-adult', label: 'Female Adult', gender: 'female' },
-      { id: 'ag-male-youth', label: 'Male Youth', gender: 'male' },
-      { id: 'ag-female-youth', label: 'Female Youth', gender: 'female' },
-      { id: 'ag-male-students', label: 'Male Students', gender: 'male' },
-      { id: 'ag-female-students', label: 'Female Students', gender: 'female' },
+      { id: 'ag-male-adult', label: 'Male Adult', gender: 'male', groupType: 'age_group' },
+      { id: 'ag-female-adult', label: 'Female Adult', gender: 'female', groupType: 'age_group' },
+      { id: 'ag-male-youth', label: 'Male Youth', gender: 'male', groupType: 'age_group' },
+      { id: 'ag-female-youth', label: 'Female Youth', gender: 'female', groupType: 'age_group' },
+      { id: 'ag-male-students', label: 'Male Students', gender: 'male', groupType: 'age_group' },
+      { id: 'ag-female-students', label: 'Female Students', gender: 'female', groupType: 'age_group' },
     ];
 
     const INITIAL_ENTRIES = [
@@ -169,6 +169,7 @@
       zions: INITIAL_ZIONS,
       ageGroups: INITIAL_AGE_GROUPS,
       entries: INITIAL_ENTRIES,
+      grandTotalGroupIds: null, // array of ag.id included in Grand Total (null = all)
       route: 'home', // 'home' | 'category' | 'public'
       selectedCategoryId: null,
       activeTab: 'records', // 'records' | 'zionSummary'
@@ -182,6 +183,22 @@
       publicSubmitted: false
     };
 
+    function getGroupType(ag) {
+      if (!ag) return 'age_group';
+      if (ag.groupType === 'other' || ag.groupType === 'age_group') return ag.groupType;
+      const lower = (ag.label || '').toLowerCase();
+      if (lower.includes('other') || lower.includes('guest') || lower.includes('visitor')) return 'other';
+      return 'age_group';
+    }
+
+    function getGrandTotalGroupIds() {
+      if (Array.isArray(state.grandTotalGroupIds) && state.grandTotalGroupIds.length > 0) {
+        const valid = state.grandTotalGroupIds.filter(id => state.ageGroups.some(ag => ag.id === id));
+        if (valid.length > 0) return valid;
+      }
+      return state.ageGroups.map(ag => ag.id);
+    }
+
     function loadState() {
       try {
         const raw = localStorage.getItem(STORAGE_KEY);
@@ -191,6 +208,7 @@
           if (Array.isArray(parsed.zions) && parsed.zions.length) state.zions = parsed.zions;
           if (Array.isArray(parsed.ageGroups) && parsed.ageGroups.length) state.ageGroups = parsed.ageGroups;
           if (Array.isArray(parsed.entries)) state.entries = parsed.entries;
+          if (Array.isArray(parsed.grandTotalGroupIds)) state.grandTotalGroupIds = parsed.grandTotalGroupIds;
         }
       } catch (e) {
         console.warn('Unable to load saved state', e);
@@ -203,7 +221,8 @@
           categories: state.categories,
           zions: state.zions,
           ageGroups: state.ageGroups,
-          entries: state.entries
+          entries: state.entries,
+          grandTotalGroupIds: state.grandTotalGroupIds
         }));
       } catch (e) {
         console.warn('Unable to persist state', e);
@@ -232,15 +251,18 @@
       return 'other';
     }
 
-    function getEntryGenderStats(entry) {
+    function getEntryGenderStats(entry, customGroupIds = null) {
       let maleTotal = 0;
       let femaleTotal = 0;
       let grandTotal = 0;
       const counts = entry?.counts || {};
+      const targetGroupIds = customGroupIds || getGrandTotalGroupIds();
 
       state.ageGroups.forEach(ag => {
         const val = Number(counts[ag.id]) || 0;
-        grandTotal += val;
+        if (targetGroupIds.includes(ag.id)) {
+          grandTotal += val;
+        }
         const gender = ag.gender || inferGenderFromLabel(ag.label);
         if (gender === 'male') maleTotal += val;
         else if (gender === 'female') femaleTotal += val;
@@ -586,6 +608,10 @@
         });
       });
 
+      const gtSelectedIds = getGrandTotalGroupIds();
+      const gtSelectedCount = gtSelectedIds.length;
+      const isAllGtSelected = gtSelectedCount === state.ageGroups.length;
+
       // Zion-wise Breakdown
       const zionMap = new Map();
       filteredEntries.forEach(entry => {
@@ -664,10 +690,20 @@
           <!-- Live Totals Cards -->
           <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
             <div class="col-span-2 sm:col-span-1 bg-indigo-600 text-white p-4 rounded-2xl shadow-xs flex flex-col justify-between">
-              <span class="text-[11px] font-bold uppercase tracking-wider text-indigo-200">Grand Total</span>
+              <div class="flex items-center justify-between">
+                <span class="text-[11px] font-bold uppercase tracking-wider text-indigo-200">Grand Total</span>
+                <button onclick="openGrandTotalSelectorModal()" title="Select age groups for Grand Total" class="inline-flex items-center gap-1 text-[10px] font-semibold text-indigo-100 hover:text-white bg-indigo-700/80 hover:bg-indigo-800 px-2 py-0.5 rounded-lg border border-indigo-400/40 transition-colors">
+                  <i data-lucide="sliders-horizontal" class="w-3 h-3"></i>
+                  <span>Select</span>
+                </button>
+              </div>
               <div class="mt-2 flex items-baseline justify-between">
                 <span class="text-2xl sm:text-3xl font-extrabold tabular-nums">${grandTotal.toLocaleString()}</span>
                 <span class="text-xs text-indigo-200">${filteredEntries.length} ${filteredEntries.length === 1 ? 'entry' : 'entries'}</span>
+              </div>
+              <div class="mt-1 text-[10px] text-indigo-200/90 truncate flex items-center gap-1">
+                <i data-lucide="check-circle-2" class="w-3 h-3 text-indigo-300 shrink-0"></i>
+                <span>${isAllGtSelected ? 'All groups counted' : `${gtSelectedCount} of ${state.ageGroups.length} groups counted`}</span>
               </div>
             </div>
 
@@ -711,6 +747,10 @@
               </div>
 
               <div class="flex items-center gap-2">
+                <button onclick="openGrandTotalSelectorModal()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-indigo-200 bg-indigo-50/80 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold transition-colors" title="Select which age groups to include in Grand Total">
+                  <i data-lucide="calculator" class="w-3.5 h-3.5"></i>
+                  <span>Grand Total (${isAllGtSelected ? 'All' : `${gtSelectedCount}/${state.ageGroups.length}`})</span>
+                </button>
                 <button onclick="openFilterRuleModal('add')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold transition-colors">
                   <i data-lucide="plus" class="w-3.5 h-3.5"></i>
                   <span>Add Filter / Search Rule</span>
@@ -825,7 +865,12 @@
                   ${state.ageGroups.map(ag => `<th class="py-3.5 px-3 text-right whitespace-nowrap">${escapeHtml(ag.label)}</th>`).join('')}
                   <th class="py-3.5 px-3 text-right text-sky-700 bg-sky-50/60 whitespace-nowrap">Male Total</th>
                   <th class="py-3.5 px-3 text-right text-rose-700 bg-rose-50/60 whitespace-nowrap">Female Total</th>
-                  <th class="py-3.5 px-4 text-right text-indigo-700 bg-indigo-50/60 whitespace-nowrap">Total</th>
+                  <th class="py-3.5 px-4 text-right text-indigo-700 bg-indigo-50/60 whitespace-nowrap">
+                    <button onclick="openGrandTotalSelectorModal()" class="inline-flex items-center gap-1 font-extrabold hover:text-indigo-900 group" title="Configure Grand Total Age Groups">
+                      <span>Grand Total</span>
+                      <i data-lucide="sliders-horizontal" class="w-3 h-3 text-indigo-400 group-hover:text-indigo-700"></i>
+                    </button>
+                  </th>
                   <th class="py-3.5 px-4 text-right">Actions</th>
                 </tr>
               </thead>
@@ -882,7 +927,12 @@
                   ${state.ageGroups.map(ag => `<th class="py-3.5 px-3 text-right whitespace-nowrap">${escapeHtml(ag.label)}</th>`).join('')}
                   <th class="py-3.5 px-3 text-right text-sky-700 bg-sky-50/60">Male Total</th>
                   <th class="py-3.5 px-3 text-right text-rose-700 bg-rose-50/60">Female Total</th>
-                  <th class="py-3.5 px-4 text-right text-indigo-700 bg-indigo-50/60">Grand Total</th>
+                  <th class="py-3.5 px-4 text-right text-indigo-700 bg-indigo-50/60">
+                    <button onclick="openGrandTotalSelectorModal()" class="inline-flex items-center gap-1 font-extrabold hover:text-indigo-900 group" title="Configure Grand Total Age Groups">
+                      <span>Grand Total</span>
+                      <i data-lucide="sliders-horizontal" class="w-3 h-3 text-indigo-400 group-hover:text-indigo-700"></i>
+                    </button>
+                  </th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-100 text-xs sm:text-sm">
@@ -908,6 +958,8 @@
     // ============================================================================
     function renderPublicSurveyView(category) {
       const shareUrl = buildShareUrl(category.id);
+      const pubAgeGroups = state.ageGroups.filter(ag => getGroupType(ag) === 'age_group');
+      const pubOtherGroups = state.ageGroups.filter(ag => getGroupType(ag) === 'other');
 
       if (state.publicSubmitted) {
         return `
@@ -993,16 +1045,34 @@
               </div>
             </div>
 
-            <div class="space-y-2.5">
+            <div class="space-y-4">
               <label class="block text-xs font-bold uppercase tracking-wider text-slate-700">Participant Counts</label>
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                ${state.ageGroups.map(ag => `
-                  <div class="p-3 rounded-xl bg-slate-50 border border-slate-200/80">
-                    <label class="block text-xs font-semibold text-slate-700 mb-1">${escapeHtml(ag.label)}</label>
-                    <input type="number" min="0" inputmode="numeric" placeholder="0" data-ag-id="${ag.id}" oninput="updatePublicLiveTotals()" class="pub-ag-input w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-base font-bold text-slate-900 tabular-nums" />
-                  </div>
-                `).join('')}
+              
+              <div>
+                <span class="block text-[11px] font-bold uppercase tracking-wider text-emerald-700 mb-2">Age Groups</span>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  ${pubAgeGroups.map(ag => `
+                    <div class="p-3 rounded-xl bg-slate-50 border border-slate-200/80">
+                      <label class="block text-xs font-semibold text-slate-700 mb-1">${escapeHtml(ag.label)}</label>
+                      <input type="number" min="0" inputmode="numeric" placeholder="0" data-ag-id="${ag.id}" oninput="updatePublicLiveTotals()" class="pub-ag-input w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-base font-bold text-slate-900 tabular-nums" />
+                    </div>
+                  `).join('')}
+                </div>
               </div>
+
+              ${pubOtherGroups.length > 0 ? `
+                <div>
+                  <span class="block text-[11px] font-bold uppercase tracking-wider text-amber-700 mb-2">Other</span>
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    ${pubOtherGroups.map(ag => `
+                      <div class="p-3 rounded-xl bg-slate-50 border border-slate-200/80">
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">${escapeHtml(ag.label)}</label>
+                        <input type="number" min="0" inputmode="numeric" placeholder="0" data-ag-id="${ag.id}" oninput="updatePublicLiveTotals()" class="pub-ag-input w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-base font-bold text-slate-900 tabular-nums" />
+                      </div>
+                    `).join('')}
+                  </div>
+                </div>
+              ` : ''}
             </div>
 
             <div class="pt-4 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1247,6 +1317,8 @@
       const cat = state.categories.find(c => c.id === state.selectedCategoryId);
       const entry = entryId ? state.entries.find(e => e.id === entryId) : null;
       const selectedZion = entry?.zionId || (state.zions[0]?.id || '');
+      const ageGroupList = state.ageGroups.filter(ag => getGroupType(ag) === 'age_group');
+      const otherGroupList = state.ageGroups.filter(ag => getGroupType(ag) === 'other');
 
       document.getElementById('modal-root').innerHTML = `
         <div class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-xs overflow-y-auto">
@@ -1299,39 +1371,85 @@
                 </div>
               </div>
 
-              <div class="space-y-3">
+              <div class="space-y-4">
                 <div class="flex items-center justify-between">
-                  <label class="text-xs font-bold uppercase tracking-wider text-slate-700">2. Participants by Age Group</label>
+                  <label class="text-xs font-bold uppercase tracking-wider text-slate-700">2. Participant Counts</label>
                   <button type="button" onclick="document.getElementById('inline-ag-adder').classList.toggle('hidden')" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 text-xs font-semibold">
-                    <i data-lucide="plus" class="w-3.5 h-3.5"></i><span>Add Age Group</span>
+                    <i data-lucide="plus" class="w-3.5 h-3.5"></i><span>Add Group</span>
                   </button>
                 </div>
 
-                <div id="inline-ag-adder" class="hidden flex flex-wrap items-center gap-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200">
-                  <input id="inline-ag-label" type="text" placeholder="e.g., Male Seniors, Female Kids..." class="flex-1 min-w-[160px] px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm" />
-                  <select id="inline-ag-gender" class="px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-700">
-                    <option value="male">Male</option>
-                    <option value="female">Female</option>
-                    <option value="other">Other</option>
-                  </select>
-                  <button type="button" onclick="addInlineAgeGroup('${mode}', '${entryId || ''}')" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold">Add</button>
+                <div id="inline-ag-adder" class="hidden space-y-2 p-3 rounded-xl bg-slate-50 border border-slate-200">
+                  <div class="flex gap-2">
+                    <input id="inline-ag-label" type="text" placeholder="Group name (e.g. Male Seniors, Guests)..." class="flex-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm" />
+                    <button type="button" onclick="addInlineAgeGroup('${mode}', '${entryId || ''}')" class="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shrink-0">Add</button>
+                  </div>
+                  <div class="flex flex-wrap items-center gap-2 text-xs">
+                    <div>
+                      <select id="inline-ag-type" class="px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-700">
+                        <option value="age_group">Age group</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </div>
+                    <div>
+                      <select id="inline-ag-gender" class="px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-700">
+                        <option value="male">Male</option>
+                        <option value="female">Female</option>
+                        <option value="other">Other / Neutral</option>
+                      </select>
+                    </div>
+                    <label class="inline-flex items-center gap-1.5 text-xs text-slate-600 ml-1 cursor-pointer">
+                      <input id="inline-ag-include-gt" type="checkbox" checked class="rounded text-indigo-600 border-slate-300" />
+                      <span>Include in Grand Total</span>
+                    </label>
+                  </div>
                 </div>
 
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" id="entry-ag-grid">
-                  ${state.ageGroups.map(ag => `
-                    <div class="p-3 rounded-xl bg-slate-50 border border-slate-200/90">
-                      <div class="flex items-center justify-between gap-2 mb-1.5">
-                        <label class="text-xs font-semibold text-slate-700 truncate">${escapeHtml(ag.label)}</label>
-                        ${state.ageGroups.length > 1 ? `
-                          <button type="button" onclick="removeInlineAgeGroup('${ag.id}', '${mode}', '${entryId || ''}')" title="Remove Age Group" class="p-1 rounded text-slate-400 hover:text-rose-600">
-                            <i data-lucide="trash-2" class="w-3 h-3"></i>
-                          </button>
-                        ` : ''}
+                <div>
+                  <h5 class="text-[11px] font-bold uppercase tracking-wider text-emerald-700 mb-2 flex items-center gap-1">
+                    <i data-lucide="users" class="w-3.5 h-3.5"></i>
+                    <span>Age Groups (${ageGroupList.length})</span>
+                  </h5>
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    ${ageGroupList.map(ag => `
+                      <div class="p-3 rounded-xl bg-slate-50 border border-slate-200/90">
+                        <div class="flex items-center justify-between gap-2 mb-1.5">
+                          <label class="text-xs font-semibold text-slate-700 truncate">${escapeHtml(ag.label)}</label>
+                          ${state.ageGroups.length > 1 ? `
+                            <button type="button" onclick="removeInlineAgeGroup('${ag.id}', '${mode}', '${entryId || ''}')" title="Remove" class="p-1 rounded text-slate-400 hover:text-rose-600">
+                              <i data-lucide="trash-2" class="w-3 h-3"></i>
+                            </button>
+                          ` : ''}
+                        </div>
+                        <input type="number" min="0" inputmode="numeric" placeholder="0" value="${entry?.counts?.[ag.id] ?? ''}" data-ag-id="${ag.id}" oninput="updateModalLiveTotals()" class="entry-ag-input w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-base font-bold text-slate-900 tabular-nums" />
                       </div>
-                      <input type="number" min="0" inputmode="numeric" placeholder="0" value="${entry?.counts?.[ag.id] ?? ''}" data-ag-id="${ag.id}" oninput="updateModalLiveTotals()" class="entry-ag-input w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-base font-bold text-slate-900 tabular-nums" />
-                    </div>
-                  `).join('')}
+                    `).join('')}
+                  </div>
                 </div>
+
+                ${otherGroupList.length > 0 ? `
+                  <div>
+                    <h5 class="text-[11px] font-bold uppercase tracking-wider text-amber-700 mb-2 flex items-center gap-1">
+                      <i data-lucide="folder" class="w-3.5 h-3.5"></i>
+                      <span>Other (${otherGroupList.length})</span>
+                    </h5>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      ${otherGroupList.map(ag => `
+                        <div class="p-3 rounded-xl bg-slate-50 border border-slate-200/90">
+                          <div class="flex items-center justify-between gap-2 mb-1.5">
+                            <label class="text-xs font-semibold text-slate-700 truncate">${escapeHtml(ag.label)}</label>
+                            ${state.ageGroups.length > 1 ? `
+                              <button type="button" onclick="removeInlineAgeGroup('${ag.id}', '${mode}', '${entryId || ''}')" title="Remove" class="p-1 rounded text-slate-400 hover:text-rose-600">
+                                <i data-lucide="trash-2" class="w-3 h-3"></i>
+                              </button>
+                            ` : ''}
+                          </div>
+                          <input type="number" min="0" inputmode="numeric" placeholder="0" value="${entry?.counts?.[ag.id] ?? ''}" data-ag-id="${ag.id}" oninput="updateModalLiveTotals()" class="entry-ag-input w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-base font-bold text-slate-900 tabular-nums" />
+                        </div>
+                      `).join('')}
+                    </div>
+                  </div>
+                ` : ''}
               </div>
 
               <div class="pt-4 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1407,12 +1525,22 @@
 
     function addInlineAgeGroup(mode, entryId) {
       const label = document.getElementById('inline-ag-label').value.trim();
+      const groupType = document.getElementById('inline-ag-type').value;
       const gender = document.getElementById('inline-ag-gender').value;
+      const includeInGt = document.getElementById('inline-ag-include-gt').checked;
       if (!label) return;
-      state.ageGroups.push({ id: `ag-${Date.now()}`, label, gender });
+      const newId = `ag-${Date.now()}`;
+      state.ageGroups.push({ id: newId, label, gender, groupType });
+      if (includeInGt) {
+        if (!Array.isArray(state.grandTotalGroupIds)) {
+          state.grandTotalGroupIds = state.ageGroups.map(ag => ag.id);
+        } else if (!state.grandTotalGroupIds.includes(newId)) {
+          state.grandTotalGroupIds.push(newId);
+        }
+      }
       saveState();
       openEntryModal(mode, entryId || null);
-      showToast(`Age group "${label}" added`);
+      showToast(`"${label}" added`);
     }
 
     function removeInlineAgeGroup(agId, mode, entryId) {
@@ -1644,30 +1772,59 @@
 
               <!-- Age Groups Column -->
               <div class="space-y-3">
-                <h4 class="text-xs font-bold uppercase tracking-wider text-emerald-600 flex items-center gap-1.5">
-                  <i data-lucide="users" class="w-3.5 h-3.5"></i><span>Age / Demographic Groups (${state.ageGroups.length})</span>
-                </h4>
-                <form onsubmit="addManagedAgeGroup(event)" class="flex gap-2">
-                  <input id="manage-new-ag" type="text" placeholder="Add new Age Group..." class="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
-                  <select id="manage-new-ag-gender" class="px-2 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700">
-                    <option value="male">Male</option>
-                    <option value="female">Female</option>
-                    <option value="other">Other</option>
-                  </select>
-                  <button type="submit" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold">Add</button>
+                <div class="flex items-center justify-between">
+                  <h4 class="text-xs font-bold uppercase tracking-wider text-emerald-600 flex items-center gap-1.5">
+                    <i data-lucide="users" class="w-3.5 h-3.5"></i><span>Age &amp; Other Groups (${state.ageGroups.length})</span>
+                  </h4>
+                  <button type="button" onclick="openGrandTotalSelectorModal()" class="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1">
+                    <i data-lucide="sliders-horizontal" class="w-3 h-3"></i><span>Configure Grand Total</span>
+                  </button>
+                </div>
+
+                <form onsubmit="addManagedAgeGroup(event)" class="space-y-2 p-3 rounded-xl bg-slate-50 border border-slate-200">
+                  <div class="flex gap-2">
+                    <input id="manage-new-ag" type="text" placeholder="Add name (e.g. Male Seniors, Guests)..." class="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm" required />
+                    <button type="submit" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shrink-0">Add</button>
+                  </div>
+                  <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                    <div>
+                      <label class="block text-[10px] font-semibold text-slate-500 mb-0.5">Category</label>
+                      <select id="manage-new-ag-type" class="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700">
+                        <option value="age_group">Age group</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label class="block text-[10px] font-semibold text-slate-500 mb-0.5">Gender</label>
+                      <select id="manage-new-ag-gender" class="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700">
+                        <option value="male">Male</option>
+                        <option value="female">Female</option>
+                        <option value="other">Other / Neutral</option>
+                      </select>
+                    </div>
+                    <div class="col-span-2 sm:col-span-1 flex items-center gap-1.5 pt-4">
+                      <input id="manage-new-ag-include-gt" type="checkbox" checked class="w-4 h-4 rounded text-indigo-600 border-slate-300" />
+                      <label for="manage-new-ag-include-gt" class="text-[11px] font-medium text-slate-700 whitespace-nowrap">In Grand Total</label>
+                    </div>
+                  </div>
                 </form>
+
                 <div class="space-y-1.5 max-h-64 overflow-y-auto pr-1">
                   ${state.ageGroups.map(ag => {
                     const g = ag.gender || inferGenderFromLabel(ag.label);
+                    const t = getGroupType(ag);
+                    const inGt = getGrandTotalGroupIds().includes(ag.id);
                     return `
                       <div class="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200/70">
-                        <div class="flex items-center gap-2 min-w-0">
+                        <div class="flex items-center gap-2 min-w-0 flex-wrap">
                           <span class="text-sm font-medium text-slate-800 truncate">${escapeHtml(ag.label)}</span>
+                          <span class="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0 ${t === 'other' ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'}">${t === 'other' ? 'Other' : 'Age Group'}</span>
                           <span class="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0 ${g === 'male' ? 'bg-sky-100 text-sky-700' : g === 'female' ? 'bg-rose-100 text-rose-700' : 'bg-slate-200 text-slate-600'}">${g}</span>
+                          ${inGt ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 shrink-0">In Grand Total</span>' : '<span class="text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-400 shrink-0">Excluded</span>'}
                         </div>
                         <div class="flex items-center gap-1 shrink-0">
-                          <button onclick="promptRenameAgeGroup('${ag.id}')" class="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-white"><i data-lucide="edit-2" class="w-3.5 h-3.5"></i></button>
-                          ${state.ageGroups.length > 1 ? `<button onclick="deleteManagedAgeGroup('${ag.id}')" class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-white"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>` : ''}
+                          <button onclick="promptRenameAgeGroup('${ag.id}')" title="Edit" class="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-white"><i data-lucide="edit-2" class="w-3.5 h-3.5"></i></button>
+                          ${state.ageGroups.length > 1 ? `<button onclick="deleteManagedAgeGroup('${ag.id}')" title="Delete" class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-white"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>` : ''}
                         </div>
                       </div>
                     `;
@@ -1732,29 +1889,61 @@
     function addManagedAgeGroup(e) {
       e.preventDefault();
       const label = document.getElementById('manage-new-ag').value.trim();
+      const groupType = document.getElementById('manage-new-ag-type').value;
       const gender = document.getElementById('manage-new-ag-gender').value;
+      const includeInGt = document.getElementById('manage-new-ag-include-gt').checked;
       if (!label) return;
-      state.ageGroups.push({ id: `ag-${Date.now()}`, label, gender });
+      const newId = `ag-${Date.now()}`;
+      state.ageGroups.push({ id: newId, label, gender, groupType });
+      if (includeInGt) {
+        if (!Array.isArray(state.grandTotalGroupIds)) {
+          state.grandTotalGroupIds = state.ageGroups.map(ag => ag.id);
+        } else if (!state.grandTotalGroupIds.includes(newId)) {
+          state.grandTotalGroupIds.push(newId);
+        }
+      }
       saveState();
       openManageFieldsModal();
-      showToast(`Age group "${label}" added`);
+      showToast(`"${label}" added as ${groupType === 'other' ? 'Other' : 'Age group'}`);
     }
 
     function promptRenameAgeGroup(id) {
       const ag = state.ageGroups.find(item => item.id === id);
       if (!ag) return;
       const g = ag.gender || inferGenderFromLabel(ag.label);
+      const t = getGroupType(ag);
+      const inGt = getGrandTotalGroupIds().includes(id);
+
       document.getElementById('modal-root').innerHTML = `
         <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
-          <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-sm p-5 space-y-4">
-            <h3 class="text-base font-bold text-slate-900">Edit Age Group</h3>
-            <input id="rename-ag-val" type="text" value="${escapeHtml(ag.label)}" autofocus class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold" />
-            <select id="rename-ag-gender" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold">
-              <option value="male" ${g === 'male' ? 'selected' : ''}>Male</option>
-              <option value="female" ${g === 'female' ? 'selected' : ''}>Female</option>
-              <option value="other" ${g === 'other' ? 'selected' : ''}>Other</option>
-            </select>
-            <div class="flex justify-end gap-2">
+          <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-sm p-5 space-y-4 animate-fade-in">
+            <h3 class="text-base font-bold text-slate-900">Edit Demographic Group</h3>
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-500 mb-1">Group Label</label>
+              <input id="rename-ag-val" type="text" value="${escapeHtml(ag.label)}" autofocus class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold" />
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block text-[11px] font-semibold text-slate-500 mb-1">Type</label>
+                <select id="rename-ag-type" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold">
+                  <option value="age_group" ${t === 'age_group' ? 'selected' : ''}>Age group</option>
+                  <option value="other" ${t === 'other' ? 'selected' : ''}>Other</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-[11px] font-semibold text-slate-500 mb-1">Gender</label>
+                <select id="rename-ag-gender" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold">
+                  <option value="male" ${g === 'male' ? 'selected' : ''}>Male</option>
+                  <option value="female" ${g === 'female' ? 'selected' : ''}>Female</option>
+                  <option value="other" ${g === 'other' ? 'selected' : ''}>Other / Neutral</option>
+                </select>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 pt-1">
+              <input id="rename-ag-include-gt" type="checkbox" ${inGt ? 'checked' : ''} class="w-4 h-4 rounded text-indigo-600 border-slate-300" />
+              <label for="rename-ag-include-gt" class="text-xs font-semibold text-slate-700">Include in Grand Total</label>
+            </div>
+            <div class="flex justify-end gap-2 pt-2">
               <button onclick="openManageFieldsModal()" class="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700">Cancel</button>
               <button onclick="saveRenamedAgeGroup('${id}')" class="px-4 py-2 rounded-xl text-xs font-semibold bg-emerald-600 text-white">Save</button>
             </div>
@@ -1765,12 +1954,139 @@
 
     function saveRenamedAgeGroup(id) {
       const label = document.getElementById('rename-ag-val').value.trim();
+      const groupType = document.getElementById('rename-ag-type').value;
       const gender = document.getElementById('rename-ag-gender').value;
+      const includeInGt = document.getElementById('rename-ag-include-gt').checked;
       if (!label) return;
-      state.ageGroups = state.ageGroups.map(ag => ag.id === id ? { ...ag, label, gender } : ag);
+      state.ageGroups = state.ageGroups.map(ag => ag.id === id ? { ...ag, label, gender, groupType } : ag);
+      
+      const currentGt = getGrandTotalGroupIds();
+      if (includeInGt && !currentGt.includes(id)) {
+        state.grandTotalGroupIds = [...currentGt, id];
+      } else if (!includeInGt && currentGt.includes(id)) {
+        state.grandTotalGroupIds = currentGt.filter(item => item !== id);
+      }
       saveState();
       openManageFieldsModal();
-      showToast('Age group updated');
+      showToast('Group updated');
+    }
+
+    function openGrandTotalSelectorModal() {
+      const currentSelected = getGrandTotalGroupIds();
+      const ageGroupItems = state.ageGroups.filter(ag => getGroupType(ag) === 'age_group');
+      const otherItems = state.ageGroups.filter(ag => getGroupType(ag) === 'other');
+
+      document.getElementById('modal-root').innerHTML = `
+        <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+          <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-md overflow-hidden animate-fade-in">
+            <div class="px-5 py-4 bg-indigo-50/60 border-b border-indigo-100 flex items-center justify-between">
+              <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center">
+                  <i data-lucide="calculator" class="w-4 h-4"></i>
+                </div>
+                <div>
+                  <h3 class="text-sm font-bold text-slate-900">Grand Total Group Selection</h3>
+                  <p class="text-[11px] text-slate-500">Choose which age groups count towards Grand Total</p>
+                </div>
+              </div>
+              <button onclick="closeModal()" class="p-1 rounded-lg text-slate-400 hover:text-slate-600">
+                <i data-lucide="x" class="w-4 h-4"></i>
+              </button>
+            </div>
+
+            <div class="p-5 space-y-4 max-h-[68vh] overflow-y-auto">
+              <!-- Presets -->
+              <div class="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+                <span class="font-bold text-slate-600">Quick Presets:</span>
+                <div class="flex items-center gap-1.5">
+                  <button type="button" onclick="setGrandTotalPreset('all')" class="px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:bg-indigo-50 text-indigo-700 font-semibold shadow-2xs">All</button>
+                  <button type="button" onclick="setGrandTotalPreset('age_only')" class="px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:bg-emerald-50 text-emerald-700 font-semibold shadow-2xs">Age Groups Only</button>
+                  <button type="button" onclick="setGrandTotalPreset('none')" class="px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:bg-rose-50 text-rose-700 font-semibold shadow-2xs">Clear</button>
+                </div>
+              </div>
+
+              <!-- Age Groups Section -->
+              <div>
+                <span class="block text-[11px] font-bold uppercase tracking-wider text-emerald-700 mb-2 flex items-center gap-1">
+                  <i data-lucide="users" class="w-3.5 h-3.5"></i>
+                  <span>Age Groups (${ageGroupItems.length})</span>
+                </span>
+                <div class="space-y-1.5">
+                  ${ageGroupItems.map(ag => `
+                    <label class="flex items-center justify-between p-2.5 rounded-xl border border-slate-200/80 hover:bg-slate-50 cursor-pointer transition-colors">
+                      <div class="flex items-center gap-2.5 min-w-0">
+                        <input type="checkbox" value="${ag.id}" class="gt-ag-checkbox w-4 h-4 rounded text-indigo-600 border-slate-300 focus:ring-indigo-500" ${currentSelected.includes(ag.id) ? 'checked' : ''} />
+                        <span class="text-xs font-semibold text-slate-800 truncate">${escapeHtml(ag.label)}</span>
+                      </div>
+                      <span class="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${ag.gender === 'male' ? 'bg-sky-100 text-sky-700' : ag.gender === 'female' ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600'}">${ag.gender}</span>
+                    </label>
+                  `).join('')}
+                  ${ageGroupItems.length === 0 ? '<p class="text-xs text-slate-400 italic">No age groups configured.</p>' : ''}
+                </div>
+              </div>
+
+              <!-- Other Groups Section -->
+              ${otherItems.length > 0 ? `
+                <div>
+                  <span class="block text-[11px] font-bold uppercase tracking-wider text-amber-700 mb-2 flex items-center gap-1">
+                    <i data-lucide="folder" class="w-3.5 h-3.5"></i>
+                    <span>Other Groups (${otherItems.length})</span>
+                  </span>
+                  <div class="space-y-1.5">
+                    ${otherItems.map(ag => `
+                      <label class="flex items-center justify-between p-2.5 rounded-xl border border-slate-200/80 hover:bg-slate-50 cursor-pointer transition-colors">
+                        <div class="flex items-center gap-2.5 min-w-0">
+                          <input type="checkbox" value="${ag.id}" class="gt-ag-checkbox w-4 h-4 rounded text-indigo-600 border-slate-300 focus:ring-indigo-500" ${currentSelected.includes(ag.id) ? 'checked' : ''} />
+                          <span class="text-xs font-semibold text-slate-800 truncate">${escapeHtml(ag.label)}</span>
+                        </div>
+                        <span class="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">Other</span>
+                      </label>
+                    `).join('')}
+                  </div>
+                </div>
+              ` : ''}
+            </div>
+
+            <div class="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+              <button type="button" onclick="closeModal()" class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-200">Cancel</button>
+              <button type="button" onclick="saveGrandTotalSelection()" class="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs">Apply Selection</button>
+            </div>
+          </div>
+        </div>
+      `;
+      lucide.createIcons();
+    }
+
+    function saveGrandTotalSelection() {
+      const checkboxes = document.querySelectorAll('.gt-ag-checkbox');
+      const selected = [];
+      checkboxes.forEach(cb => {
+        if (cb.checked) selected.push(cb.value);
+      });
+      if (selected.length === 0) {
+        showToast('Please select at least one group for Grand Total', 'error');
+        return;
+      }
+      state.grandTotalGroupIds = selected;
+      saveState();
+      closeModal();
+      render();
+      showToast(`Grand Total updated (${selected.length} groups selected)`);
+    }
+
+    function setGrandTotalPreset(preset) {
+      const checkboxes = document.querySelectorAll('.gt-ag-checkbox');
+      checkboxes.forEach(cb => {
+        const ag = state.ageGroups.find(item => item.id === cb.value);
+        const type = getGroupType(ag);
+        if (preset === 'all') {
+          cb.checked = true;
+        } else if (preset === 'age_only') {
+          cb.checked = (type === 'age_group');
+        } else if (preset === 'none') {
+          cb.checked = false;
+        }
+      });
     }
 
     function deleteManagedAgeGroup(id) {
@@ -1885,13 +2201,15 @@
           if (Array.isArray(data.zions) && data.zions.length) state.zions = data.zions;
           if (Array.isArray(data.ageGroups) && data.ageGroups.length) state.ageGroups = data.ageGroups;
           if (Array.isArray(data.entries)) state.entries = data.entries;
+          if (Array.isArray(data.grandTotalGroupIds)) state.grandTotalGroupIds = data.grandTotalGroupIds;
           
           try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify({
               categories: state.categories,
               zions: state.zions,
               ageGroups: state.ageGroups,
-              entries: state.entries
+              entries: state.entries,
+              grandTotalGroupIds: state.grandTotalGroupIds
             }));
           } catch (e) {}
 
@@ -1905,6 +2223,7 @@
             zions: state.zions,
             ageGroups: state.ageGroups,
             entries: state.entries,
+            grandTotalGroupIds: state.grandTotalGroupIds,
             updatedAt: new Date().toISOString()
           }, { merge: true })
           .then(() => updateSyncBadge('synced', 'Firebase Initialized'))
@@ -1933,6 +2252,7 @@
             zions: state.zions,
             ageGroups: state.ageGroups,
             entries: state.entries,
+            grandTotalGroupIds: state.grandTotalGroupIds,
             updatedAt: new Date().toISOString()
           }, { merge: true });
           updateSyncBadge('synced', 'Saved to Cloud');
