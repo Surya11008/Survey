@@ -71,6 +71,8 @@
           <span class="hidden sm:inline">Manage Zions &amp; Groups</span>
           <span class="sm:hidden">Fields</span>
         </button>
+
+        <div id="admin-header-slot" class="flex items-center"></div>
       </div>
     </div>
   </header>
@@ -205,6 +207,10 @@
     const BACKUP_STORAGE_KEY = 'zion_survey_backup_v1';
     const SNAPSHOTS_KEY = 'zion_survey_snapshots_v1';
 
+    const ADMIN_ID = 'surya11008';
+    const ADMIN_PASSWORD = 'Suri742766.';
+    const ADMIN_SESSION_KEY = 'zion_survey_admin_logged_in_v1';
+
     let state = {
       categories: INITIAL_CATEGORIES,
       zions: INITIAL_ZIONS,
@@ -216,6 +222,8 @@
       deletedZionIds: [],
       deletedAgIds: [],
       route: 'home', // 'home' | 'category' | 'public'
+      homeView: 'grid', // 'grid' | 'list'
+      isAdmin: false,
       selectedCategoryId: null,
       activeTab: 'records', // 'records' | 'zionSummary'
       filters: {
@@ -227,6 +235,21 @@
       },
       publicSubmitted: false
     };
+
+    function checkAdminPermission(actionName = 'perform this action') {
+      if (state.isAdmin) return true;
+      showToast(`Admin login required to ${actionName}`, 'error');
+      openAdminLoginModal();
+      return false;
+    }
+
+    function setHomeView(view) {
+      state.homeView = view === 'list' ? 'list' : 'grid';
+      try {
+        localStorage.setItem('zion_survey_home_view', state.homeView);
+      } catch (e) {}
+      render();
+    }
 
     function getGroupType(ag) {
       if (!ag) return 'age_group';
@@ -415,6 +438,17 @@
         } else {
           state.categories = ensureDefaultCategories([...INITIAL_CATEGORIES], []);
         }
+
+        try {
+          const savedView = localStorage.getItem('zion_survey_home_view');
+          if (savedView === 'list' || savedView === 'grid') {
+            state.homeView = savedView;
+          }
+          const savedAdmin = localStorage.getItem(ADMIN_SESSION_KEY);
+          if (savedAdmin === 'true') {
+            state.isAdmin = true;
+          }
+        } catch (e) {}
       } catch (e) {
         console.warn('Unable to load saved state', e);
       }
@@ -658,6 +692,30 @@
         backBtn.classList.remove('hidden');
       }
 
+      const adminSlot = document.getElementById('admin-header-slot');
+      if (adminSlot) {
+        if (state.isAdmin) {
+          adminSlot.innerHTML = `
+            <div class="inline-flex items-center gap-1">
+              <span class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold shadow-2xs">
+                <i data-lucide="shield-check" class="w-3.5 h-3.5 text-amber-600"></i>
+                <span class="hidden md:inline">Admin:</span> <span class="font-mono text-amber-800">surya11008</span>
+              </span>
+              <button onclick="handleAdminLogout()" title="Logout Admin (surya11008)" class="p-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-500 text-xs font-semibold transition-colors cursor-pointer">
+                <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+              </button>
+            </div>
+          `;
+        } else {
+          adminSlot.innerHTML = `
+            <button onclick="openAdminLoginModal()" title="Admin Login (surya11008)" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-2xs transition-colors cursor-pointer">
+              <i data-lucide="lock" class="w-3.5 h-3.5 text-amber-400"></i>
+              <span>Admin</span>
+            </button>
+          `;
+        }
+      }
+
       const main = document.getElementById('app-main');
       const activeCat = state.categories.find(c => c.id === state.selectedCategoryId);
 
@@ -673,8 +731,123 @@
     }
 
     // ============================================================================
-    // 1. HOME FOLDER VIEW (NO GLOBAL TOTAL BOXES, "+ ADD SURVEY")
+    // 1. HOME FOLDER VIEW (GRID & LIST VIEW, ADMIN GATED)
     // ============================================================================
+    function renderHomeListView() {
+      if (state.categories.length === 0) {
+        return `
+          <div class="text-center py-16 bg-white rounded-2xl border border-dashed border-slate-300">
+            <i data-lucide="folder" class="w-12 h-12 text-slate-300 mx-auto mb-3"></i>
+            <h3 class="text-lg font-semibold text-slate-800">No Surveys Yet</h3>
+            <p class="text-sm text-slate-500 mt-1 mb-5">
+              Create your first survey to start recording attendance.
+            </p>
+            ${state.isAdmin ? `
+              <button onclick="openCategoryModal('add')" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 cursor-pointer">
+                <i data-lucide="folder-plus" class="w-4 h-4"></i>
+                <span>Add Survey</span>
+              </button>
+            ` : `
+              <button onclick="openAdminLoginModal()" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 text-slate-700 text-sm font-semibold hover:bg-slate-200 cursor-pointer">
+                <i data-lucide="lock" class="w-4 h-4 text-amber-500"></i>
+                <span>Admin Login to Add</span>
+              </button>
+            `}
+          </div>
+        `;
+      }
+
+      return `
+        <div class="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[11px]">
+                  <th class="py-3 px-4">Survey Folder</th>
+                  <th class="py-3 px-3 text-center">Records</th>
+                  <th class="py-3 px-3 text-center">Total Participants</th>
+                  <th class="py-3 px-3 text-center">Male / Female</th>
+                  <th class="py-3 px-4 text-center">Public Survey Form</th>
+                  ${state.isAdmin ? '<th class="py-3 px-4 text-right">Actions</th>' : ''}
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100 font-medium">
+                ${state.categories.map(cat => {
+                  const catEntries = state.entries.filter(e => e.categoryId === cat.id);
+                  let catParticipants = 0, catMale = 0, catFemale = 0;
+                  catEntries.forEach(e => {
+                    const s = getEntryGenderStats(e);
+                    catParticipants += s.grandTotal;
+                    catMale += s.maleTotal;
+                    catFemale += s.femaleTotal;
+                  });
+                  const theme = FOLDER_COLORS.find(c => c.id === cat.color) || FOLDER_COLORS[0];
+
+                  return `
+                    <tr class="hover:bg-slate-50/80 transition-colors cursor-pointer group" onclick="openCategory('${cat.id}')">
+                      <td class="py-3.5 px-4">
+                        <div class="flex items-center gap-3">
+                          <div class="w-9 h-9 rounded-xl ${theme.bg} ${theme.border} border flex items-center justify-center shrink-0">
+                            <i data-lucide="folder" class="w-4 h-4 ${theme.icon}"></i>
+                          </div>
+                          <div>
+                            <div class="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors text-sm flex items-center gap-1.5">
+                              <span>${escapeHtml(cat.name)}</span>
+                              <i data-lucide="chevron-right" class="w-3.5 h-3.5 text-slate-400 group-hover:translate-x-0.5 transition-all"></i>
+                            </div>
+                            <p class="text-[11px] text-slate-500 line-clamp-1 max-w-xs sm:max-w-md">${escapeHtml(cat.description || 'Attendance survey category')}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td class="py-3.5 px-3 text-center whitespace-nowrap">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-semibold">
+                          ${catEntries.length} ${catEntries.length === 1 ? 'entry' : 'entries'}
+                        </span>
+                      </td>
+                      <td class="py-3.5 px-3 text-center whitespace-nowrap">
+                        <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${theme.badge}">
+                          ${catParticipants.toLocaleString()}
+                        </span>
+                      </td>
+                      <td class="py-3.5 px-3 text-center whitespace-nowrap">
+                        <div class="inline-flex items-center gap-1.5 text-[11px] font-semibold">
+                          <span class="px-2 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-100">M: ${catMale}</span>
+                          <span class="px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-100">F: ${catFemale}</span>
+                        </div>
+                      </td>
+                      <td class="py-3.5 px-4 text-center whitespace-nowrap" onclick="event.stopPropagation()">
+                        <div class="inline-flex items-center gap-1.5">
+                          <button onclick="copyCategoryLink('${cat.id}')" title="Copy public link" class="p-1.5 rounded-lg bg-slate-100 hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 transition-colors cursor-pointer">
+                            <i data-lucide="share-2" class="w-3.5 h-3.5"></i>
+                          </button>
+                          <button onclick="openPublicSurvey('${cat.id}')" title="Open public form" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-indigo-600 text-xs font-semibold transition-colors cursor-pointer">
+                            <span>Open</span>
+                            <i data-lucide="external-link" class="w-3 h-3"></i>
+                          </button>
+                        </div>
+                      </td>
+                      ${state.isAdmin ? `
+                        <td class="py-3.5 px-4 text-right whitespace-nowrap" onclick="event.stopPropagation()">
+                          <div class="inline-flex items-center justify-end gap-1">
+                            <button onclick="openCategoryModal('edit', '${cat.id}')" title="Edit Survey" class="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-white transition-colors cursor-pointer">
+                              <i data-lucide="edit-2" class="w-3.5 h-3.5"></i>
+                            </button>
+                            <button onclick="confirmDeleteCategory('${cat.id}')" title="Delete Survey" class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-white transition-colors cursor-pointer">
+                              <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                            </button>
+                          </div>
+                        </td>
+                      ` : ''}
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
     function renderHomeFolderView() {
       const cardsHtml = state.categories.length === 0
         ? `
@@ -684,10 +857,17 @@
             <p class="text-sm text-slate-500 mt-1 mb-5">
               Create your first survey (e.g., Gathering, Education, Online Meeting) to start recording attendance.
             </p>
-            <button onclick="openCategoryModal('add')" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700">
-              <i data-lucide="folder-plus" class="w-4 h-4"></i>
-              <span>Add Survey</span>
-            </button>
+            ${state.isAdmin ? `
+              <button onclick="openCategoryModal('add')" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 cursor-pointer">
+                <i data-lucide="folder-plus" class="w-4 h-4"></i>
+                <span>Add Survey</span>
+              </button>
+            ` : `
+              <button onclick="openAdminLoginModal()" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 text-slate-700 text-sm font-semibold hover:bg-slate-200 cursor-pointer">
+                <i data-lucide="lock" class="w-4 h-4 text-amber-500"></i>
+                <span>Admin Login to Add</span>
+              </button>
+            `}
           </div>
         `
         : `
@@ -717,14 +897,22 @@
                         <i data-lucide="folder" class="w-6 h-6 ${theme.icon}"></i>
                       </div>
 
-                      <div class="flex items-center gap-1" onclick="event.stopPropagation()">
-                        <button onclick="openCategoryModal('edit', '${cat.id}')" title="Edit Survey" class="p-2 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors">
-                          <i data-lucide="edit-2" class="w-4 h-4"></i>
-                        </button>
-                        <button onclick="confirmDeleteCategory('${cat.id}')" title="Delete Survey" class="p-2 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors">
-                          <i data-lucide="trash-2" class="w-4 h-4"></i>
-                        </button>
-                      </div>
+                      ${state.isAdmin ? `
+                        <div class="flex items-center gap-1" onclick="event.stopPropagation()">
+                          <button onclick="openCategoryModal('edit', '${cat.id}')" title="Edit Survey" class="p-2 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer">
+                            <i data-lucide="edit-2" class="w-4 h-4"></i>
+                          </button>
+                          <button onclick="confirmDeleteCategory('${cat.id}')" title="Delete Survey" class="p-2 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer">
+                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                          </button>
+                        </div>
+                      ` : `
+                        <div class="flex items-center gap-1" onclick="event.stopPropagation()">
+                          <button onclick="openAdminLoginModal()" title="Admin Login to Edit/Delete" class="p-1.5 rounded-lg text-slate-300 hover:text-slate-500 hover:bg-slate-50 transition-colors cursor-pointer">
+                            <i data-lucide="lock" class="w-3.5 h-3.5"></i>
+                          </button>
+                        </div>
+                      `}
                     </div>
 
                     <div class="mt-4">
@@ -748,12 +936,12 @@
 
                     <!-- Public Survey Link Strip -->
                     <div onclick="event.stopPropagation()" class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                      <button onclick="copyCategoryLink('${cat.id}')" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 text-xs font-semibold transition-colors">
+                      <button onclick="copyCategoryLink('${cat.id}')" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 text-xs font-semibold transition-colors cursor-pointer">
                         <i data-lucide="share-2" class="w-3.5 h-3.5 text-indigo-600"></i>
                         <span>Copy Survey Link</span>
                       </button>
 
-                      <button onclick="openPublicSurvey('${cat.id}')" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-indigo-600 hover:bg-indigo-50 transition-colors">
+                      <button onclick="openPublicSurvey('${cat.id}')" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer">
                         <span>Open Form</span>
                         <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
                       </button>
@@ -782,7 +970,7 @@
         `;
 
       return `
-        <div class="space-y-8">
+        <div class="space-y-6">
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/90 shadow-xs">
             <div>
               <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-indigo-600 mb-1">
@@ -794,15 +982,34 @@
                 Open any survey folder to manage records, totals &amp; filters, or share its direct survey link so participants can submit responses.
               </p>
             </div>
-            <div class="flex items-center shrink-0">
-              <button onclick="openCategoryModal('add')" class="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white font-semibold text-sm shadow-sm transition-all cursor-pointer">
-                <i data-lucide="folder-plus" class="w-4 h-4"></i>
-                <span>+ Add Survey</span>
-              </button>
+            <div class="flex items-center gap-2.5 shrink-0 flex-wrap">
+              <!-- View Switcher (Grid / List) -->
+              <div class="inline-flex items-center p-1 bg-slate-100 rounded-xl border border-slate-200 shadow-2xs">
+                <button type="button" onclick="setHomeView('grid')" title="Grid View" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${state.homeView !== 'list' ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
+                  <i data-lucide="layout-grid" class="w-3.5 h-3.5"></i>
+                  <span>Grid</span>
+                </button>
+                <button type="button" onclick="setHomeView('list')" title="List View" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${state.homeView === 'list' ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
+                  <i data-lucide="list" class="w-3.5 h-3.5"></i>
+                  <span>List</span>
+                </button>
+              </div>
+
+              ${state.isAdmin ? `
+                <button onclick="openCategoryModal('add')" class="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white font-semibold text-xs sm:text-sm shadow-sm transition-all cursor-pointer">
+                  <i data-lucide="folder-plus" class="w-4 h-4"></i>
+                  <span>+ Add Survey</span>
+                </button>
+              ` : `
+                <button onclick="openAdminLoginModal()" class="inline-flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs shadow-2xs transition-all cursor-pointer">
+                  <i data-lucide="lock" class="w-3.5 h-3.5 text-amber-500"></i>
+                  <span>+ Add Survey (Admin)</span>
+                </button>
+              `}
             </div>
           </div>
 
-          ${cardsHtml}
+          ${state.homeView === 'list' ? renderHomeListView() : cardsHtml}
         </div>
       `;
     }
@@ -939,10 +1146,12 @@
                 <div>
                   <div class="flex items-center gap-2">
                     <span class="px-2.5 py-0.5 rounded-full text-xs font-bold ${theme.badge}">Survey Workspace</span>
-                    <button onclick="openCategoryModal('edit', '${category.id}')" class="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-indigo-600">
-                      <i data-lucide="edit-2" class="w-3 h-3"></i>
-                      <span>Edit Survey</span>
-                    </button>
+                    ${state.isAdmin ? `
+                      <button onclick="openCategoryModal('edit', '${category.id}')" class="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-indigo-600 cursor-pointer">
+                        <i data-lucide="edit-2" class="w-3 h-3"></i>
+                        <span>Edit Survey</span>
+                      </button>
+                    ` : ''}
                   </div>
                   <h2 class="text-xl sm:text-2xl font-extrabold text-slate-900 mt-1">${escapeHtml(category.name)}</h2>
                   ${category.description ? `<p class="text-xs sm:text-sm text-slate-500 mt-0.5">${escapeHtml(category.description)}</p>` : ''}
@@ -950,20 +1159,27 @@
               </div>
 
               <div class="flex flex-wrap items-center gap-2.5">
-                <button onclick="openPublicSurvey('${category.id}')" class="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs sm:text-sm font-semibold transition-colors">
+                <button onclick="openPublicSurvey('${category.id}')" class="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs sm:text-sm font-semibold transition-colors cursor-pointer">
                   <i data-lucide="external-link" class="w-4 h-4"></i>
                   <span>Public Survey Form</span>
                 </button>
 
-                <button onclick="exportCategoryCSV('${category.id}')" class="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs sm:text-sm font-semibold transition-colors">
+                <button onclick="exportCategoryCSV('${category.id}')" class="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs sm:text-sm font-semibold transition-colors cursor-pointer">
                   <i data-lucide="download" class="w-4 h-4"></i>
                   <span>Export CSV</span>
                 </button>
 
-                <button onclick="openEntryModal('add')" class="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-semibold shadow-sm transition-all cursor-pointer">
-                  <i data-lucide="plus" class="w-4 h-4"></i>
-                  <span>Add Entry</span>
-                </button>
+                ${state.isAdmin ? `
+                  <button onclick="openEntryModal('add')" class="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-semibold shadow-sm transition-all cursor-pointer">
+                    <i data-lucide="plus" class="w-4 h-4"></i>
+                    <span>Add Entry</span>
+                  </button>
+                ` : `
+                  <button onclick="openAdminLoginModal()" class="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs sm:text-sm font-semibold shadow-2xs transition-all cursor-pointer">
+                    <i data-lucide="lock" class="w-3.5 h-3.5 text-amber-500"></i>
+                    <span>+ Add Entry (Admin)</span>
+                  </button>
+                `}
               </div>
             </div>
 
@@ -1139,10 +1355,17 @@
             <i data-lucide="users" class="w-10 h-10 text-slate-300 mx-auto mb-2"></i>
             <p class="text-sm font-semibold text-slate-700">No matching survey entries</p>
             <p class="text-xs text-slate-500 mt-1 mb-4">Add a new survey record or adjust your active filters.</p>
-            <button onclick="openEntryModal('add')" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700">
-              <i data-lucide="plus" class="w-3.5 h-3.5"></i>
-              <span>Add Entry</span>
-            </button>
+            ${state.isAdmin ? `
+              <button onclick="openEntryModal('add')" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 cursor-pointer">
+                <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                <span>Add Entry</span>
+              </button>
+            ` : `
+              <button onclick="openAdminLoginModal()" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold cursor-pointer">
+                <i data-lucide="lock" class="w-3.5 h-3.5 text-amber-500"></i>
+                <span>Admin Login to Add</span>
+              </button>
+            `}
           </div>
         `;
       }
@@ -1165,7 +1388,7 @@
                       <i data-lucide="sliders-horizontal" class="w-3 h-3 text-indigo-400 group-hover:text-indigo-700"></i>
                     </button>
                   </th>
-                  <th class="py-3.5 px-4 text-right">Actions</th>
+                  ${state.isAdmin ? '<th class="py-3.5 px-4 text-right">Actions</th>' : ''}
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-100 text-xs sm:text-sm">
@@ -1181,16 +1404,18 @@
                       <td class="py-3 px-3 text-right font-bold text-sky-800 bg-sky-50/40 tabular-nums">${stats.maleTotal}</td>
                       <td class="py-3 px-3 text-right font-bold text-rose-800 bg-rose-50/40 tabular-nums">${stats.femaleTotal}</td>
                       <td class="py-3 px-4 text-right font-extrabold text-indigo-700 bg-indigo-50/40 tabular-nums">${stats.grandTotal}</td>
-                      <td class="py-3 px-4 text-right whitespace-nowrap">
-                        <div class="inline-flex items-center gap-1">
-                          <button onclick="openEntryModal('edit', '${entry.id}')" title="Edit Entry" class="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50">
-                            <i data-lucide="edit-2" class="w-3.5 h-3.5"></i>
-                          </button>
-                          <button onclick="confirmDeleteEntry('${entry.id}')" title="Delete Entry" class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50">
-                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-                          </button>
-                        </div>
-                      </td>
+                      ${state.isAdmin ? `
+                        <td class="py-3 px-4 text-right whitespace-nowrap">
+                          <div class="inline-flex items-center gap-1">
+                            <button onclick="openEntryModal('edit', '${entry.id}')" title="Edit Entry" class="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 cursor-pointer">
+                              <i data-lucide="edit-2" class="w-3.5 h-3.5"></i>
+                            </button>
+                            <button onclick="confirmDeleteEntry('${entry.id}')" title="Delete Entry" class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer">
+                              <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                            </button>
+                          </div>
+                        </td>
+                      ` : ''}
                     </tr>
                   `;
                 }).join('')}
@@ -1312,20 +1537,24 @@
             <div class="space-y-2">
               <div class="flex items-center justify-between">
                 <label class="text-xs font-bold uppercase tracking-wider text-slate-700">Select Zion *</label>
-                <button type="button" onclick="document.getElementById('pub-add-zion-box').classList.toggle('hidden')" class="text-xs font-semibold text-indigo-600 hover:text-indigo-800 inline-flex items-center gap-1">
-                  <i data-lucide="plus" class="w-3.5 h-3.5"></i>
-                  <span>Add Zion</span>
-                </button>
+                ${state.isAdmin ? `
+                  <button type="button" onclick="document.getElementById('pub-add-zion-box').classList.toggle('hidden')" class="text-xs font-semibold text-indigo-600 hover:text-indigo-800 inline-flex items-center gap-1 cursor-pointer">
+                    <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                    <span>Add Zion</span>
+                  </button>
+                ` : ''}
               </div>
 
               <select id="pub-zion-select" required class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-900">
                 ${state.zions.map(z => `<option value="${z.id}">${escapeHtml(z.name)}</option>`).join('')}
               </select>
 
-              <div id="pub-add-zion-box" class="hidden flex items-center gap-2 pt-1">
-                <input id="pub-new-zion-input" type="text" placeholder="New Zion name..." class="flex-1 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm" />
-                <button type="button" onclick="handlePublicQuickAddZion()" class="px-3.5 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold">Add</button>
-              </div>
+              ${state.isAdmin ? `
+                <div id="pub-add-zion-box" class="hidden flex items-center gap-2 pt-1">
+                  <input id="pub-new-zion-input" type="text" placeholder="New Zion name..." class="flex-1 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm" />
+                  <button type="button" onclick="handlePublicQuickAddZion()" class="px-3.5 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold cursor-pointer">Add</button>
+                </div>
+              ` : ''}
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1387,6 +1616,7 @@
     }
 
     function handlePublicQuickAddZion() {
+      if (!checkAdminPermission('add a new Zion')) return;
       const input = document.getElementById('pub-new-zion-input');
       const trimmed = (input?.value || '').trim();
       if (!trimmed) return;
@@ -1513,6 +1743,7 @@
 
     // --- Modal 1: Add / Edit Survey ---
     function openCategoryModal(mode, catId = null) {
+      if (!checkAdminPermission(mode === 'add' ? 'create a new survey' : 'edit this survey')) return;
       const cat = catId ? state.categories.find(c => c.id === catId) : null;
       const selectedColor = cat?.color || 'indigo';
 
@@ -1591,6 +1822,7 @@
     }
 
     function confirmDeleteCategory(catId) {
+      if (!checkAdminPermission('delete this survey')) return;
       const cat = state.categories.find(c => c.id === catId);
       if (!cat) return;
       openConfirmModal(
@@ -1618,6 +1850,7 @@
 
     // --- Modal 2: Add / Edit Survey Entry ---
     function openEntryModal(mode, entryId = null) {
+      if (!checkAdminPermission(mode === 'add' ? 'add an attendance entry' : 'edit this entry')) return;
       const cat = state.categories.find(c => c.id === state.selectedCategoryId);
       const entry = entryId ? state.entries.find(e => e.id === entryId) : null;
       const selectedZion = entry?.zionId || (state.zions[0]?.id || '');
@@ -1719,8 +1952,8 @@
                       <div class="p-3 rounded-xl bg-slate-50 border border-slate-200/90">
                         <div class="flex items-center justify-between gap-2 mb-1.5">
                           <label class="text-xs font-semibold text-slate-700 truncate">${escapeHtml(ag.label)}</label>
-                          ${state.ageGroups.length > 1 ? `
-                            <button type="button" onclick="removeInlineAgeGroup('${ag.id}', '${mode}', '${entryId || ''}')" title="Remove" class="p-1 rounded text-slate-400 hover:text-rose-600">
+                          ${state.isAdmin && state.ageGroups.length > 1 ? `
+                            <button type="button" onclick="removeInlineAgeGroup('${ag.id}', '${mode}', '${entryId || ''}')" title="Remove" class="p-1 rounded text-slate-400 hover:text-rose-600 cursor-pointer">
                               <i data-lucide="trash-2" class="w-3 h-3"></i>
                             </button>
                           ` : ''}
@@ -1742,8 +1975,8 @@
                         <div class="p-3 rounded-xl bg-slate-50 border border-slate-200/90">
                           <div class="flex items-center justify-between gap-2 mb-1.5">
                             <label class="text-xs font-semibold text-slate-700 truncate">${escapeHtml(ag.label)}</label>
-                            ${state.ageGroups.length > 1 ? `
-                              <button type="button" onclick="removeInlineAgeGroup('${ag.id}', '${mode}', '${entryId || ''}')" title="Remove" class="p-1 rounded text-slate-400 hover:text-rose-600">
+                            ${state.isAdmin && state.ageGroups.length > 1 ? `
+                              <button type="button" onclick="removeInlineAgeGroup('${ag.id}', '${mode}', '${entryId || ''}')" title="Remove" class="p-1 rounded text-slate-400 hover:text-rose-600 cursor-pointer">
                                 <i data-lucide="trash-2" class="w-3 h-3"></i>
                               </button>
                             ` : ''}
@@ -1802,6 +2035,7 @@
     }
 
     function saveInlineZion() {
+      if (!checkAdminPermission('add or rename Zions')) return;
       const mode = document.getElementById('inline-zion-mode').value;
       const val = document.getElementById('inline-zion-input').value.trim();
       const select = document.getElementById('entry-zion-select');
@@ -1829,6 +2063,7 @@
     }
 
     function addInlineAgeGroup(mode, entryId) {
+      if (!checkAdminPermission('add demographic groups')) return;
       const label = document.getElementById('inline-ag-label').value.trim();
       const groupType = document.getElementById('inline-ag-type').value;
       const gender = document.getElementById('inline-ag-gender').value;
@@ -1850,6 +2085,7 @@
     }
 
     function removeInlineAgeGroup(agId, mode, entryId) {
+      if (!checkAdminPermission('remove demographic groups')) return;
       if (state.ageGroups.length <= 1) return;
       if (!state.deletedAgIds) state.deletedAgIds = [];
       state.deletedAgIds.push(agId);
@@ -1903,6 +2139,7 @@
     }
 
     function confirmDeleteEntry(entryId) {
+      if (!checkAdminPermission('delete this entry')) return;
       openConfirmModal(
         'Delete Survey Entry?',
         'Are you sure you want to delete this survey record? This action cannot be undone.',
@@ -2049,16 +2286,38 @@
 
     // --- Modal 4: Manage Zions & Age Groups ---
     function openManageFieldsModal() {
+      const isAdmin = !!state.isAdmin;
       document.getElementById('modal-root').innerHTML = `
         <div class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-xs overflow-y-auto">
           <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-3xl overflow-hidden my-auto animate-fade-in">
             <div class="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
               <div>
-                <h3 class="text-lg font-bold text-slate-900">Manage Zions &amp; Age Groups</h3>
-                <p class="text-xs text-slate-500">Add, rename, or remove Zions and demographic age groups.</p>
+                <div class="flex items-center gap-2">
+                  <h3 class="text-lg font-bold text-slate-900">Manage Zions &amp; Age Groups</h3>
+                  ${isAdmin ? `
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold">
+                      <i data-lucide="shield-check" class="w-3 h-3 text-amber-600"></i> Admin Mode
+                    </span>
+                  ` : `
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 text-[10px] font-semibold">
+                      <i data-lucide="lock" class="w-3 h-3 text-slate-500"></i> Read Only
+                    </span>
+                  `}
+                </div>
+                <p class="text-xs text-slate-500 mt-0.5">Add, rename, or remove Zions and demographic age groups.</p>
               </div>
-              <button onclick="closeModal()" class="p-2 rounded-xl text-slate-400 hover:text-slate-700"><i data-lucide="x" class="w-5 h-5"></i></button>
+              <button onclick="closeModal()" class="p-2 rounded-xl text-slate-400 hover:text-slate-700 cursor-pointer"><i data-lucide="x" class="w-5 h-5"></i></button>
             </div>
+
+            ${!isAdmin ? `
+              <div class="mx-6 mt-4 p-3 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-between gap-3 text-xs text-amber-900">
+                <div class="flex items-center gap-2 min-w-0">
+                  <i data-lucide="lock" class="w-4 h-4 text-amber-600 shrink-0"></i>
+                  <span><strong>Administrator Mode Required:</strong> Log in as Admin to add, rename, or remove Zions and Demographic groups.</span>
+                </div>
+                <button type="button" onclick="openAdminLoginModal()" class="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-semibold shrink-0 cursor-pointer">Admin Login</button>
+              </div>
+            ` : ''}
 
             <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-6 max-h-[75vh] overflow-y-auto">
               <!-- Zions Column -->
@@ -2066,18 +2325,22 @@
                 <h4 class="text-xs font-bold uppercase tracking-wider text-indigo-600 flex items-center gap-1.5">
                   <i data-lucide="map-pin" class="w-3.5 h-3.5"></i><span>Zions (${state.zions.length})</span>
                 </h4>
-                <form onsubmit="addManagedZion(event)" class="flex gap-2">
-                  <input id="manage-new-zion" type="text" placeholder="Add new Zion..." class="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
-                  <button type="submit" class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold">Add</button>
-                </form>
+                ${isAdmin ? `
+                  <form onsubmit="addManagedZion(event)" class="flex gap-2">
+                    <input id="manage-new-zion" type="text" placeholder="Add new Zion..." class="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
+                    <button type="submit" class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold cursor-pointer">Add</button>
+                  </form>
+                ` : ''}
                 <div class="space-y-1.5 max-h-64 overflow-y-auto pr-1">
                   ${state.zions.map(z => `
                     <div class="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200/70">
                       <span class="text-sm font-medium text-slate-800">${escapeHtml(z.name)}</span>
-                      <div class="flex items-center gap-1">
-                        <button onclick="promptRenameZion('${z.id}')" class="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-white"><i data-lucide="edit-2" class="w-3.5 h-3.5"></i></button>
-                        ${state.zions.length > 1 ? `<button onclick="deleteManagedZion('${z.id}')" class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-white"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>` : ''}
-                      </div>
+                      ${isAdmin ? `
+                        <div class="flex items-center gap-1">
+                          <button onclick="promptRenameZion('${z.id}')" title="Rename" class="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-white cursor-pointer"><i data-lucide="edit-2" class="w-3.5 h-3.5"></i></button>
+                          ${state.zions.length > 1 ? `<button onclick="deleteManagedZion('${z.id}')" title="Delete" class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-white cursor-pointer"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>` : ''}
+                        </div>
+                      ` : ''}
                     </div>
                   `).join('')}
                 </div>
@@ -2089,38 +2352,40 @@
                   <h4 class="text-xs font-bold uppercase tracking-wider text-emerald-600 flex items-center gap-1.5">
                     <i data-lucide="users" class="w-3.5 h-3.5"></i><span>Age &amp; Other Groups (${state.ageGroups.length})</span>
                   </h4>
-                  <button type="button" onclick="openGrandTotalSelectorModal()" class="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1">
+                  <button type="button" onclick="openGrandTotalSelectorModal()" class="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer">
                     <i data-lucide="sliders-horizontal" class="w-3 h-3"></i><span>Configure Grand Total</span>
                   </button>
                 </div>
 
-                <form onsubmit="addManagedAgeGroup(event)" class="space-y-2 p-3 rounded-xl bg-slate-50 border border-slate-200">
-                  <div class="flex gap-2">
-                    <input id="manage-new-ag" type="text" placeholder="Add name (e.g. Male Seniors, Guests)..." class="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm" required />
-                    <button type="submit" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shrink-0">Add</button>
-                  </div>
-                  <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
-                    <div>
-                      <label class="block text-[10px] font-semibold text-slate-500 mb-0.5">Category</label>
-                      <select id="manage-new-ag-type" class="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700">
-                        <option value="age_group">Age group</option>
-                        <option value="other">Other</option>
-                      </select>
+                ${isAdmin ? `
+                  <form onsubmit="addManagedAgeGroup(event)" class="space-y-2 p-3 rounded-xl bg-slate-50 border border-slate-200">
+                    <div class="flex gap-2">
+                      <input id="manage-new-ag" type="text" placeholder="Add name (e.g. Male Seniors, Guests)..." class="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm" required />
+                      <button type="submit" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shrink-0 cursor-pointer">Add</button>
                     </div>
-                    <div>
-                      <label class="block text-[10px] font-semibold text-slate-500 mb-0.5">Gender</label>
-                      <select id="manage-new-ag-gender" class="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700">
-                        <option value="male">Male</option>
-                        <option value="female">Female</option>
-                        <option value="other">Other / Neutral</option>
-                      </select>
+                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                      <div>
+                        <label class="block text-[10px] font-semibold text-slate-500 mb-0.5">Category</label>
+                        <select id="manage-new-ag-type" class="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700">
+                          <option value="age_group">Age group</option>
+                          <option value="other">Other</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label class="block text-[10px] font-semibold text-slate-500 mb-0.5">Gender</label>
+                        <select id="manage-new-ag-gender" class="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700">
+                          <option value="male">Male</option>
+                          <option value="female">Female</option>
+                          <option value="other">Other / Neutral</option>
+                        </select>
+                      </div>
+                      <div class="col-span-2 sm:col-span-1 flex items-center gap-1.5 pt-4">
+                        <input id="manage-new-ag-include-gt" type="checkbox" checked class="w-4 h-4 rounded text-indigo-600 border-slate-300" />
+                        <label for="manage-new-ag-include-gt" class="text-[11px] font-medium text-slate-700 whitespace-nowrap">In Grand Total</label>
+                      </div>
                     </div>
-                    <div class="col-span-2 sm:col-span-1 flex items-center gap-1.5 pt-4">
-                      <input id="manage-new-ag-include-gt" type="checkbox" checked class="w-4 h-4 rounded text-indigo-600 border-slate-300" />
-                      <label for="manage-new-ag-include-gt" class="text-[11px] font-medium text-slate-700 whitespace-nowrap">In Grand Total</label>
-                    </div>
-                  </div>
-                </form>
+                  </form>
+                ` : ''}
 
                 <div class="space-y-1.5 max-h-64 overflow-y-auto pr-1">
                   ${state.ageGroups.map(ag => {
@@ -2135,10 +2400,12 @@
                           <span class="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0 ${g === 'male' ? 'bg-sky-100 text-sky-700' : g === 'female' ? 'bg-rose-100 text-rose-700' : 'bg-slate-200 text-slate-600'}">${g}</span>
                           ${inGt ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 shrink-0">In Grand Total</span>' : '<span class="text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-400 shrink-0">Excluded</span>'}
                         </div>
-                        <div class="flex items-center gap-1 shrink-0">
-                          <button onclick="promptRenameAgeGroup('${ag.id}')" title="Edit" class="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-white"><i data-lucide="edit-2" class="w-3.5 h-3.5"></i></button>
-                          ${state.ageGroups.length > 1 ? `<button onclick="deleteManagedAgeGroup('${ag.id}')" title="Delete" class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-white"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>` : ''}
-                        </div>
+                        ${isAdmin ? `
+                          <div class="flex items-center gap-1 shrink-0">
+                            <button onclick="promptRenameAgeGroup('${ag.id}')" title="Edit" class="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-white cursor-pointer"><i data-lucide="edit-2" class="w-3.5 h-3.5"></i></button>
+                            ${state.ageGroups.length > 1 ? `<button onclick="deleteManagedAgeGroup('${ag.id}')" title="Delete" class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-white cursor-pointer"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>` : ''}
+                          </div>
+                        ` : ''}
                       </div>
                     `;
                   }).join('')}
@@ -2187,6 +2454,7 @@
 
     function addManagedZion(e) {
       e.preventDefault();
+      if (!checkAdminPermission('add a new Zion')) return;
       const val = document.getElementById('manage-new-zion').value.trim();
       if (!val) return;
       const now = new Date().toISOString();
@@ -2197,6 +2465,7 @@
     }
 
     function promptRenameZion(id) {
+      if (!checkAdminPermission('rename Zions')) return;
       const z = state.zions.find(item => item.id === id);
       if (!z) return;
       document.getElementById('modal-root').innerHTML = `
@@ -2214,6 +2483,7 @@
     }
 
     function saveRenamedZion(id) {
+      if (!checkAdminPermission('rename Zions')) return;
       const val = document.getElementById('rename-zion-val').value.trim();
       if (!val) return;
       const now = new Date().toISOString();
@@ -2224,6 +2494,7 @@
     }
 
     function deleteManagedZion(id) {
+      if (!checkAdminPermission('delete Zions')) return;
       if (state.zions.length <= 1) return;
       if (!state.deletedZionIds) state.deletedZionIds = [];
       state.deletedZionIds.push(id);
@@ -2235,6 +2506,7 @@
 
     function addManagedAgeGroup(e) {
       e.preventDefault();
+      if (!checkAdminPermission('add demographic groups')) return;
       const label = document.getElementById('manage-new-ag').value.trim();
       const groupType = document.getElementById('manage-new-ag-type').value;
       const gender = document.getElementById('manage-new-ag-gender').value;
@@ -2256,6 +2528,7 @@
     }
 
     function promptRenameAgeGroup(id) {
+      if (!checkAdminPermission('edit demographic groups')) return;
       const ag = state.ageGroups.find(item => item.id === id);
       if (!ag) return;
       const g = ag.gender || inferGenderFromLabel(ag.label);
@@ -2301,6 +2574,7 @@
     }
 
     function saveRenamedAgeGroup(id) {
+      if (!checkAdminPermission('edit demographic groups')) return;
       const label = document.getElementById('rename-ag-val').value.trim();
       const groupType = document.getElementById('rename-ag-type').value;
       const gender = document.getElementById('rename-ag-gender').value;
@@ -2397,8 +2671,12 @@
             </div>
 
             <div class="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
-              <button type="button" onclick="closeModal()" class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-200">Cancel</button>
-              <button type="button" onclick="saveGrandTotalSelection()" class="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs">Apply Selection</button>
+              <button type="button" onclick="closeModal()" class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-200 cursor-pointer">Cancel</button>
+              ${state.isAdmin ? `
+                <button type="button" onclick="saveGrandTotalSelection()" class="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs cursor-pointer">Apply Selection</button>
+              ` : `
+                <button type="button" onclick="openAdminLoginModal()" class="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer"><i data-lucide="lock" class="w-3.5 h-3.5"></i><span>Admin Login to Apply</span></button>
+              `}
             </div>
           </div>
         </div>
@@ -2407,6 +2685,7 @@
     }
 
     function saveGrandTotalSelection() {
+      if (!checkAdminPermission('modify Grand Total settings')) return;
       const checkboxes = document.querySelectorAll('.gt-ag-checkbox');
       const selected = [];
       checkboxes.forEach(cb => {
@@ -2439,6 +2718,7 @@
     }
 
     function deleteManagedAgeGroup(id) {
+      if (!checkAdminPermission('delete demographic groups')) return;
       if (state.ageGroups.length <= 1) return;
       if (!state.deletedAgIds) state.deletedAgIds = [];
       state.deletedAgIds.push(id);
@@ -2464,14 +2744,141 @@
               </div>
             </div>
             <div class="flex justify-end gap-2 pt-2">
-              <button onclick="closeModal()" class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200">Cancel</button>
-              <button onclick="window.__confirmAction && window.__confirmAction()" class="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700">Delete</button>
+              <button onclick="closeModal()" class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 cursor-pointer">Cancel</button>
+              <button onclick="window.__confirmAction && window.__confirmAction()" class="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 cursor-pointer">Delete</button>
             </div>
           </div>
         </div>
       `;
       lucide.createIcons();
     }
+
+    // --- Modal 6: Admin Login Modal ---
+    function openAdminLoginModal() {
+      document.getElementById('modal-root').innerHTML = `
+        <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-sm overflow-hidden animate-fade-in">
+            <div class="px-6 py-4 bg-gradient-to-r from-slate-900 to-indigo-950 text-white flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-amber-400 border border-white/10">
+                  <i data-lucide="shield-check" class="w-5 h-5"></i>
+                </div>
+                <div>
+                  <h3 class="text-sm font-bold text-white">Admin Authentication</h3>
+                  <p class="text-[11px] text-slate-300">Authorized personnel only</p>
+                </div>
+              </div>
+              <button onclick="closeModal()" class="p-1 rounded-lg text-slate-400 hover:text-white transition-colors cursor-pointer">
+                <i data-lucide="x" class="w-5 h-5"></i>
+              </button>
+            </div>
+
+            <form onsubmit="handleAdminLoginSubmit(event)" class="p-6 space-y-4">
+              <div id="admin-login-error" class="hidden p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-700 flex items-center gap-2">
+                <i data-lucide="alert-circle" class="w-4 h-4 text-rose-500 shrink-0"></i>
+                <span id="admin-login-error-text">Invalid Admin ID or Password</span>
+              </div>
+
+              <div>
+                <label for="admin-id-input" class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">Admin ID</label>
+                <div class="relative">
+                  <input id="admin-id-input" type="text" autocomplete="username" placeholder="Enter Admin ID" required autofocus class="w-full pl-9 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 transition-all" />
+                  <i data-lucide="user" class="w-4 h-4 text-slate-400 absolute left-3 top-3"></i>
+                </div>
+              </div>
+
+              <div>
+                <label for="admin-pass-input" class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">Password</label>
+                <div class="relative">
+                  <input id="admin-pass-input" type="password" autocomplete="current-password" placeholder="Enter Password" required class="w-full pl-9 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 transition-all" />
+                  <i data-lucide="lock" class="w-4 h-4 text-slate-400 absolute left-3 top-3"></i>
+                  <button type="button" onclick="toggleAdminPasswordVisibility()" class="p-1 text-slate-400 hover:text-slate-600 absolute right-2.5 top-2.5 cursor-pointer">
+                    <i id="admin-pass-eye" data-lucide="eye" class="w-4 h-4"></i>
+                  </button>
+                </div>
+              </div>
+
+              <div class="pt-2 flex items-center justify-end gap-2">
+                <button type="button" onclick="closeModal()" class="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer">Cancel</button>
+                <button type="submit" class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs flex items-center gap-2 cursor-pointer">
+                  <i data-lucide="log-in" class="w-3.5 h-3.5"></i>
+                  <span>Sign In</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      `;
+      lucide.createIcons();
+      setTimeout(() => {
+        const idInp = document.getElementById('admin-id-input');
+        if (idInp) idInp.focus();
+      }, 50);
+    }
+
+    function toggleAdminPasswordVisibility() {
+      const passInp = document.getElementById('admin-pass-input');
+      const eyeIcon = document.getElementById('admin-pass-eye');
+      if (!passInp) return;
+      if (passInp.type === 'password') {
+        passInp.type = 'text';
+        if (eyeIcon) eyeIcon.setAttribute('data-lucide', 'eye-off');
+      } else {
+        passInp.type = 'password';
+        if (eyeIcon) eyeIcon.setAttribute('data-lucide', 'eye');
+      }
+      lucide.createIcons();
+    }
+
+    function handleAdminLoginSubmit(e) {
+      e.preventDefault();
+      const idInp = document.getElementById('admin-id-input');
+      const passInp = document.getElementById('admin-pass-input');
+      const errBox = document.getElementById('admin-login-error');
+      const errText = document.getElementById('admin-login-error-text');
+
+      const enteredId = idInp ? idInp.value.trim() : '';
+      const enteredPass = passInp ? passInp.value : '';
+
+      if (enteredId === ADMIN_ID && enteredPass === ADMIN_PASSWORD) {
+        state.isAdmin = true;
+        try {
+          localStorage.setItem(ADMIN_SESSION_KEY, 'true');
+        } catch (err) {
+          console.warn('LocalStorage admin write failed:', err);
+        }
+        closeModal();
+        render();
+        showToast('Logged in as Administrator (surya11008)');
+      } else {
+        if (errBox) {
+          errBox.classList.remove('hidden');
+          if (errText) errText.textContent = 'Incorrect Admin ID or Password. Please try again.';
+          lucide.createIcons();
+        }
+        if (passInp) {
+          passInp.value = '';
+          passInp.focus();
+        }
+      }
+    }
+
+    function handleAdminLogout() {
+      state.isAdmin = false;
+      try {
+        localStorage.removeItem(ADMIN_SESSION_KEY);
+      } catch (err) {
+        console.warn('LocalStorage admin remove failed:', err);
+      }
+      render();
+      showToast('Logged out of Admin Mode');
+    }
+
+    window.openAdminLoginModal = openAdminLoginModal;
+    window.handleAdminLoginSubmit = handleAdminLoginSubmit;
+    window.toggleAdminPasswordVisibility = toggleAdminPasswordVisibility;
+    window.handleAdminLogout = handleAdminLogout;
+    window.setHomeView = setHomeView;
 
     // ============================================================================
     // BOOTSTRAP APPLICATION
