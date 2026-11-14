@@ -105,7 +105,22 @@
       { id: 'cat-gathering', name: 'Gathering', description: 'Regular congregation & regional gathering attendance', color: 'indigo' },
       { id: 'cat-education', name: 'Education', description: 'Study sessions, workshops & youth classes', color: 'emerald' },
       { id: 'cat-online', name: 'Online Meeting', description: 'Virtual sessions & remote Zion participation', color: 'sky' },
+      { id: 'cat-new-song-festival', name: 'New Song Festival', description: 'New Song praise, choir & festival participation attendance', color: 'amber' },
     ];
+
+    function ensureDefaultCategories(cats) {
+      if (!Array.isArray(cats)) return [...INITIAL_CATEGORIES];
+      const hasNewSong = cats.some(c => c.id === 'cat-new-song-festival' || (c.name || '').toLowerCase().includes('new song'));
+      if (!hasNewSong) {
+        cats.push({
+          id: 'cat-new-song-festival',
+          name: 'New Song Festival',
+          description: 'New Song praise, choir & festival participation attendance',
+          color: 'amber'
+        });
+      }
+      return cats;
+    }
 
     const INITIAL_ZIONS = [
       { id: 'zion-rjy', name: 'Rajahmundry' },
@@ -158,6 +173,14 @@
         date: getTodayISO(),
         notes: 'Evening Zoom Session',
         counts: { 'ag-male-adult': 12, 'ag-female-adult': 15, 'ag-male-youth': 9, 'ag-female-youth': 11, 'ag-male-students': 7, 'ag-female-students': 8 }
+      },
+      {
+        id: 'ent-5',
+        categoryId: 'cat-new-song-festival',
+        zionId: 'zion-rjy',
+        date: getTodayISO(),
+        notes: 'Festival Praises & Choir',
+        counts: { 'ag-male-adult': 16, 'ag-female-adult': 20, 'ag-male-youth': 14, 'ag-female-youth': 18, 'ag-male-students': 10, 'ag-female-students': 12 }
       }
     ];
 
@@ -204,11 +227,17 @@
         const raw = localStorage.getItem(STORAGE_KEY);
         if (raw) {
           const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed.categories) && parsed.categories.length) state.categories = parsed.categories;
+          if (Array.isArray(parsed.categories) && parsed.categories.length) {
+            state.categories = ensureDefaultCategories(parsed.categories);
+          } else {
+            state.categories = [...INITIAL_CATEGORIES];
+          }
           if (Array.isArray(parsed.zions) && parsed.zions.length) state.zions = parsed.zions;
           if (Array.isArray(parsed.ageGroups) && parsed.ageGroups.length) state.ageGroups = parsed.ageGroups;
           if (Array.isArray(parsed.entries)) state.entries = parsed.entries;
           if (Array.isArray(parsed.grandTotalGroupIds)) state.grandTotalGroupIds = parsed.grandTotalGroupIds;
+        } else {
+          state.categories = [...INITIAL_CATEGORIES];
         }
       } catch (e) {
         console.warn('Unable to load saved state', e);
@@ -2197,7 +2226,14 @@
         if (docSnap.exists()) {
           const data = docSnap.data();
           isRemoteUpdate = true;
-          if (Array.isArray(data.categories) && data.categories.length) state.categories = data.categories;
+          if (Array.isArray(data.categories) && data.categories.length) {
+            state.categories = ensureDefaultCategories(data.categories);
+            if (!data.categories.some(c => c.id === 'cat-new-song-festival' || (c.name || '').toLowerCase().includes('new song'))) {
+              setDoc(docRef, { categories: state.categories }, { merge: true }).catch(() => {});
+            }
+          } else {
+            state.categories = ensureDefaultCategories(state.categories);
+          }
           if (Array.isArray(data.zions) && data.zions.length) state.zions = data.zions;
           if (Array.isArray(data.ageGroups) && data.ageGroups.length) state.ageGroups = data.ageGroups;
           if (Array.isArray(data.entries)) state.entries = data.entries;

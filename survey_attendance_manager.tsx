@@ -118,6 +118,12 @@ const INITIAL_CATEGORIES = [
     description: 'Virtual sessions & remote Zion participation',
     color: 'sky',
   },
+  {
+    id: 'cat-new-song-festival',
+    name: 'New Song Festival',
+    description: 'New Song praise, choir & festival participation attendance',
+    color: 'amber',
+  },
 ];
 
 const INITIAL_ZIONS = [
