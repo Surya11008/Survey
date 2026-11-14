@@ -31,6 +31,19 @@ import {
 } from 'lucide-react';
 
 // ============================================================================
+// FIREBASE CONFIGURATION
+// ============================================================================
+export const firebaseConfig = {
+  apiKey: "AIzaSyB0ZL4r72-G6XCapKvjA-cbOWJbjC9dNuI",
+  authDomain: "sni-org-in.firebaseapp.com",
+  projectId: "sni-org-in",
+  storageBucket: "sni-org-in.firebasestorage.app",
+  messagingSenderId: "717850324141",
+  appId: "1:717850324141:web:17280789950030ea386a24",
+  measurementId: "G-L3XR047S9Q"
+};
+
+// ============================================================================
 // DEFAULT DATA & CONSTANTS
 // ============================================================================
 const STORAGE_KEY = 'zion_survey_attendance_app_v2';
